@@ -92,6 +92,7 @@ spec:
     - integration-aws-nvidia-nonfree-lts
     - integration-aws-nvidia-nonfree-production
     - integration-gcp
+  bldrImageVersion: v0.5.6
 ---
 kind: common.GHWorkflow
 spec:
