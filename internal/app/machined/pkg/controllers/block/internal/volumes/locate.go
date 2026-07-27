@@ -60,6 +60,9 @@ func LocateAndProvision(ctx context.Context, logger *zap.Logger, vc ManagerConte
 
 // handleSimpleVolumeTypes handles non-provisionable types.
 // Returns true if the volume type was handled.
+//
+// This decides which volume types end up with a Location: keep it in sync with
+// block.VolumeType.IsBlockBacked.
 func handleSimpleVolumeTypes(vc ManagerContext) bool {
 	spec := vc.Cfg.TypedSpec()
 

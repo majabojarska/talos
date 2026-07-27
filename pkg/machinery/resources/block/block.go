@@ -87,6 +87,45 @@ func GetSystemDisk(ctx context.Context, st state.State) (*SystemDiskSpec, error)
 	return systemDisk.TypedSpec(), nil
 }
 
+// maxVolumeParentDepth caps the parent chain walk, so that a malformed chain can't loop forever.
+const maxVolumeParentDepth = 8
+
+// ResolveBackingVolume walks up the parent chain of a volume to the nearest ancestor which is
+// backed by a block device (i.e. which has a Location).
+//
+// A volume which is itself block-backed resolves to itself. Returns nil if the chain ends without
+// reaching a block-backed volume, or if a link in the chain is missing.
+func ResolveBackingVolume(ctx context.Context, st state.State, volumeStatus *VolumeStatus) (*VolumeStatus, error) {
+	for range maxVolumeParentDepth {
+		if volumeStatus.TypedSpec().Location != "" {
+			return volumeStatus, nil
+		}
+
+		// overlay volumes link to the parent via ParentID, directory volumes via MountSpec.ParentID.
+		parentID := volumeStatus.TypedSpec().ParentID
+		if parentID == "" {
+			parentID = volumeStatus.TypedSpec().MountSpec.ParentID
+		}
+
+		if parentID == "" {
+			return nil, nil
+		}
+
+		parent, err := safe.ReaderGetByID[*VolumeStatus](ctx, st, parentID)
+		if err != nil {
+			if state.IsNotFoundError(err) {
+				return nil, nil
+			}
+
+			return nil, fmt.Errorf("error getting parent volume status %q: %w", parentID, err)
+		}
+
+		volumeStatus = parent
+	}
+
+	return nil, nil
+}
+
 // GetSystemDiskPaths returns the path(s) of system disk and STATE, EPHEMERAL,
 // CRI, KUBELET, and ETCD partitions (if not backed by EPHEMERAL).
 //

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cosi-project/runtime/pkg/resource/meta"
+	"github.com/cosi-project/runtime/pkg/safe"
 	"github.com/cosi-project/runtime/pkg/state"
 	"github.com/cosi-project/runtime/pkg/state/impl/inmem"
 	"github.com/cosi-project/runtime/pkg/state/impl/namespaced"
@@ -163,12 +164,136 @@ func TestGetSystemDiskPaths(t *testing.T) {
 	}
 }
 
+func TestVolumeTypeIsBlockBacked(t *testing.T) {
+	for _, test := range []struct {
+		volumeType block.VolumeType
+		expected   bool
+	}{
+		{block.VolumeTypePartition, true},
+		{block.VolumeTypeDisk, true},
+		{block.VolumeTypeExternal, true},
+		{block.VolumeTypeTmpfs, false},
+		{block.VolumeTypeDirectory, false},
+		{block.VolumeTypeSymlink, false},
+		{block.VolumeTypeOverlay, false},
+	} {
+		t.Run(test.volumeType.String(), func(t *testing.T) {
+			assert.Equal(t, test.expected, test.volumeType.IsBlockBacked())
+		})
+	}
+}
+
+func TestResolveBackingVolume(t *testing.T) {
+	// the default layout: CRI is a directory under /var/lib, which is a directory on the
+	// EPHEMERAL partition, and /opt is an overlay linked to EPHEMERAL via ParentID.
+	defaultLayout := []volumeSpec{
+		{id: constants.EphemeralPartitionLabel, volumeType: block.VolumeTypePartition, location: "/dev/sda4", parentLocation: "/dev/sda"},
+		{id: "/var/lib", volumeType: block.VolumeTypeDirectory, mountParentID: constants.EphemeralPartitionLabel},
+		{id: constants.CRIContainerdVolumeID, volumeType: block.VolumeTypeDirectory, mountParentID: "/var/lib"},
+		{id: "/opt", volumeType: block.VolumeTypeOverlay, parentID: constants.EphemeralPartitionLabel},
+	}
+
+	for _, test := range []struct {
+		name     string
+		volumes  []volumeSpec
+		resolve  string
+		expected string // volume ID, "" for none
+	}{
+		{
+			name:     "directory volume resolves through the chain",
+			volumes:  defaultLayout,
+			resolve:  constants.CRIContainerdVolumeID,
+			expected: constants.EphemeralPartitionLabel,
+		},
+		{
+			name:     "overlay volume resolves via ParentID",
+			volumes:  defaultLayout,
+			resolve:  "/opt",
+			expected: constants.EphemeralPartitionLabel,
+		},
+		{
+			name:     "located volume resolves to itself",
+			volumes:  defaultLayout,
+			resolve:  constants.EphemeralPartitionLabel,
+			expected: constants.EphemeralPartitionLabel,
+		},
+		{
+			name: "dedicated partition resolves to itself",
+			volumes: []volumeSpec{
+				{id: constants.CRIContainerdVolumeID, volumeType: block.VolumeTypePartition, location: "/dev/sdb1", parentLocation: "/dev/sdb"},
+			},
+			resolve:  constants.CRIContainerdVolumeID,
+			expected: constants.CRIContainerdVolumeID,
+		},
+		{
+			name: "no parent at all",
+			volumes: []volumeSpec{
+				{id: constants.CRIContainerdVolumeID, volumeType: block.VolumeTypeDirectory},
+			},
+			resolve:  constants.CRIContainerdVolumeID,
+			expected: "",
+		},
+		{
+			name: "missing link in the chain",
+			volumes: []volumeSpec{
+				{id: constants.CRIContainerdVolumeID, volumeType: block.VolumeTypeDirectory, mountParentID: "/var/lib"},
+			},
+			resolve:  constants.CRIContainerdVolumeID,
+			expected: "",
+		},
+		{
+			name: "chain never reaches a located volume",
+			volumes: []volumeSpec{
+				{id: constants.EphemeralPartitionLabel, volumeType: block.VolumeTypePartition},
+				{id: constants.CRIContainerdVolumeID, volumeType: block.VolumeTypeDirectory, mountParentID: constants.EphemeralPartitionLabel},
+			},
+			resolve:  constants.CRIContainerdVolumeID,
+			expected: "",
+		},
+		{
+			name: "cycle terminates",
+			volumes: []volumeSpec{
+				{id: "a", volumeType: block.VolumeTypeDirectory, mountParentID: "b"},
+				{id: "b", volumeType: block.VolumeTypeDirectory, mountParentID: "a"},
+			},
+			resolve:  "a",
+			expected: "",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := t.Context()
+			st := state.WrapCore(namespaced.NewState(inmem.Build))
+
+			for _, vol := range test.volumes {
+				createVolumeStatus(ctx, t, st, vol)
+			}
+
+			volumeStatus, err := safe.StateGetByID[*block.VolumeStatus](ctx, st, test.resolve)
+			require.NoError(t, err)
+
+			backingVolume, err := block.ResolveBackingVolume(ctx, st, volumeStatus)
+			require.NoError(t, err)
+
+			if test.expected == "" {
+				assert.Nil(t, backingVolume)
+
+				return
+			}
+
+			require.NotNil(t, backingVolume)
+			assert.Equal(t, test.expected, backingVolume.Metadata().ID())
+		})
+	}
+}
+
 // volumeSpec describes a VolumeStatus to seed into the test state.
 type volumeSpec struct {
 	id             string
 	volumeType     block.VolumeType
 	location       string
 	parentLocation string
+	parentID       string
+	mountParentID  string
 }
 
 func createSystemDisk(ctx context.Context, t *testing.T, st state.State, diskID, devPath string) {
@@ -188,6 +313,8 @@ func createVolumeStatus(ctx context.Context, t *testing.T, st state.State, spec 
 	volumeStatus.TypedSpec().Type = spec.volumeType
 	volumeStatus.TypedSpec().Location = spec.location
 	volumeStatus.TypedSpec().ParentLocation = spec.parentLocation
+	volumeStatus.TypedSpec().ParentID = spec.parentID
+	volumeStatus.TypedSpec().MountSpec.ParentID = spec.mountParentID
 
 	require.NoError(t, st.Create(ctx, volumeStatus))
 }

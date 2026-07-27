@@ -629,7 +629,18 @@ func (s *Server) Reset(ctx context.Context, in *machine.ResetRequest) (reply *ma
 
 	actorID := uuid.New().String()
 
-	log.Printf("reset request received. actorID: %s", actorID)
+	log.Printf("reset request received. actorID: %s, mode: %s, system volumes to wipe: %v, user disks to wipe: %v",
+		actorID,
+		in.GetMode(),
+		xslices.Map(in.GetSystemPartitionsToWipe(), func(spec *machine.ResetPartitionSpec) string {
+			if !spec.GetWipe() {
+				return spec.GetLabel() + "(keep)"
+			}
+
+			return spec.GetLabel()
+		}),
+		in.GetUserDisksToWipe(),
+	)
 
 	opts := ResetOptions{
 		ResetRequest: in,
@@ -686,7 +697,7 @@ func (s *Server) Reset(ctx context.Context, in *machine.ResetRequest) (reply *ma
 			}
 
 			if volumeStatus.TypedSpec().Location == "" {
-				return nil, fmt.Errorf("failed to reset: volume %q is not located", spec.Label)
+				return nil, fmt.Errorf("failed to reset: %s", explainUnlocatedVolume(ctx, s.Controller.Runtime().State().V1Alpha2().Resources(), volumeStatus))
 			}
 
 			target := partition.VolumeWipeTargetFromVolumeStatus(volumeStatus)
@@ -723,6 +734,42 @@ func (s *Server) Reset(ctx context.Context, in *machine.ResetRequest) (reply *ma
 	}
 
 	return reply, nil
+}
+
+// explainUnlocatedVolume describes why a volume requested for a wipe has no block device to wipe.
+//
+// There are two distinct reasons, and telling them apart matters: a volume which isn't block-backed
+// (e.g. CRI as a directory on EPHEMERAL) never gets a Location by design, while a block-backed one
+// is only missing a Location while it isn't located yet.
+func explainUnlocatedVolume(ctx context.Context, st state.State, volumeStatus *block.VolumeStatus) string {
+	spec := volumeStatus.TypedSpec()
+	label := volumeStatus.Metadata().ID()
+
+	if spec.Type.IsBlockBacked() {
+		msg := fmt.Sprintf("volume %q (%s) is not located: phase %q", label, spec.Type, spec.Phase)
+
+		if spec.ErrorMessage != "" {
+			msg += ": " + spec.ErrorMessage
+		}
+
+		return msg
+	}
+
+	msg := fmt.Sprintf("volume %q is %s-backed and has no block device to wipe", label, spec.Type)
+
+	backingVolume, err := block.ResolveBackingVolume(ctx, st, volumeStatus)
+	if err != nil {
+		// don't mask the actual failure: report it and fall back to the short form
+		log.Printf("failed to resolve the volume backing %q: %s", label, err)
+
+		return msg
+	}
+
+	if backingVolume != nil {
+		msg += fmt.Sprintf("; its data is stored on volume %q — wipe that instead, but note it may also hold other volumes", backingVolume.Metadata().ID())
+	}
+
+	return msg
 }
 
 // ServiceList returns list of the registered services and their status.

@@ -19,3 +19,20 @@ const (
 	VolumeTypeOverlay                     // overlay
 	VolumeTypeExternal                    // external
 )
+
+// IsBlockBacked returns true if volumes of this type are backed by a block device, and therefore
+// get a Location in VolumeStatus.
+//
+// Volumes of the other types live inside a parent volume, so they never get a Location: keep this
+// in sync with handleSimpleVolumeTypes in
+// internal/app/machined/pkg/controllers/block/internal/volumes/locate.go.
+func (t VolumeType) IsBlockBacked() bool {
+	switch t {
+	case VolumeTypePartition, VolumeTypeDisk, VolumeTypeExternal:
+		return true
+	case VolumeTypeTmpfs, VolumeTypeDirectory, VolumeTypeSymlink, VolumeTypeOverlay:
+		return false
+	default:
+		return false
+	}
+}
