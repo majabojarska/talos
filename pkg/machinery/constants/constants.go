@@ -576,6 +576,20 @@ const (
 	// K8sContainerdNamespace is the Containerd namespace for CRI pods.
 	K8sContainerdNamespace = "k8s.io"
 
+	// TalosContainersNamespace is the Containerd namespace for containers declared via ContainerConfig.
+	//
+	// These run against the CRI containerd instance, but in their own namespace so that they neither
+	// collide with Kubernetes pods nor depend on Kubernetes being configured.
+	TalosContainersNamespace = "taloscontainers"
+
+	// TalosContainersLogPrefix prefixes the log identifiers of containers declared via ContainerConfig.
+	//
+	// Container output goes to the same in-memory circular buffers as Talos service logs, and that
+	// keyspace is flat, so an unprefixed container named "apid" would interleave its output with the
+	// real apid. The buffer outlives the container, which is what makes the logs of a stopped
+	// container readable.
+	TalosContainersLogPrefix = TalosContainersNamespace + "-"
+
 	// CRIContainerdAddress is the path to the CRI containerd socket address.
 	CRIContainerdAddress = "/run/containerd/containerd.sock"
 
@@ -887,6 +901,12 @@ const (
 
 	// CgroupSystemSandboxMillicores is the CPU weight for the sandbox cgroup.
 	CgroupSystemSandboxMillicores = 100
+
+	// CgroupTalosContainersRoot is the cgroup containing containers declared via ContainerConfig.
+	CgroupTalosContainersRoot = "taloscontainers"
+
+	// CgroupTalosContainersMillicores is the CPU weight for the Talos containers cgroup.
+	CgroupTalosContainersMillicores = 1000
 
 	// CgroupPodRuntimeRoot is the cgroup containing Kubernetes runtime components.
 	CgroupPodRuntimeRoot = "podruntime"

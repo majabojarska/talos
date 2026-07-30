@@ -1,0 +1,172 @@
+syntax = "proto3";
+
+package talos.resource.definitions.containers;
+
+option go_package = "github.com/siderolabs/talos/pkg/machinery/api/resource/definitions/containers";
+option java_package = "dev.talos.api.resource.definitions.containers";
+
+import "google/protobuf/timestamp.proto";
+import "resource/definitions/enums/enums.proto";
+
+// ContainerDependsOnSpec is the resolved dependency set.
+message ContainerDependsOnSpec {
+  repeated string paths = 1;
+  repeated string networks = 2;
+  bool time = 3;
+  repeated string containers = 4;
+}
+
+// ContainerImageStatusSpec is the spec for ContainerImageStatus.
+message ContainerImageStatusSpec {
+  talos.resource.definitions.enums.ContainersContainerImagePhase phase = 1;
+  // Image is the reference that was requested, in canonical form.
+  string image = 2;
+  // Digest is the resolved digest, set once the pull completes.
+  string digest = 3;
+  // Progress is a human-readable pull progress line, e.g. "12 MiB / 40 MiB".
+  string progress = 4;
+  // Error is the last pull failure, verbatim.
+  string error = 5;
+}
+
+// ContainerInstanceSpecSpec is the spec for ContainerInstanceSpec.
+//
+// It carries a resolved snapshot of everything needed to run one execution, so the runtime
+// controller never has to re-read the container spec, image status or mount status. That keeps the
+// execution independent of later changes to those inputs: a spec change destroys this instance
+// rather than mutating it.
+message ContainerInstanceSpecSpec {
+  // ContainerID is the name of the owning container, i.e. the ContainerSpec ID.
+  string container_id = 1;
+  // Generation is this instance's sequence number for that container.
+  uint64 generation = 2;
+  // Image is the digest-resolved reference to run.
+  string image = 3;
+  repeated string entrypoint = 4;
+  repeated string args = 5;
+  string working_dir = 6;
+  string user = 7;
+  repeated string environment = 8;
+  // Mounts are fully resolved, with host source paths filled in.
+  repeated ResolvedMountSpec mounts = 9;
+  ContainerSecuritySpec security = 10;
+  ContainerNetworkSpec network = 11;
+  ContainerResourcesSpec resources = 12;
+}
+
+// ContainerInstanceStatusSpec is the spec for ContainerInstanceStatus.
+message ContainerInstanceStatusSpec {
+  // ContainerID is the name of the owning container.
+  string container_id = 1;
+  // Generation is this instance's sequence number.
+  uint64 generation = 2;
+  talos.resource.definitions.enums.ContainersContainerInstancePhase phase = 3;
+  // PID of the task; zero unless running.
+  uint32 pid = 4;
+  // ExitCode is meaningful once Phase is terminated.
+  int32 exit_code = 5;
+  // Error is the failure that ended this instance, verbatim.
+  string error = 6;
+  // StartedAt is when the task started; zero if it never did.
+  google.protobuf.Timestamp started_at = 7;
+  // FinishedAt is when the task exited; zero while running.
+  google.protobuf.Timestamp finished_at = 8;
+}
+
+// ContainerMountSpec is a resolved mount.
+//
+// Exactly one of VolumeID, Tmpfs or HostPath describes the source; Kind says which.
+message ContainerMountSpec {
+  // Kind is one of "userVolume", "tmpfs" or "hostPath".
+  string kind = 1;
+  // VolumeID is the block volume ID for a userVolume mount, e.g. "u-web-content".
+  string volume_id = 2;
+  // Source is the host path for a hostPath mount.
+  string source = 3;
+  // Destination inside the container.
+  string destination = 4;
+  // Size of a tmpfs mount, in bytes; zero means the kernel default.
+  uint64 size = 5;
+  // Options with the read-only default already applied.
+  repeated string options = 6;
+}
+
+// ContainerMountStatusSpec is the spec for ContainerMountStatus.
+message ContainerMountStatusSpec {
+  // Ready is true once every mount the container needs is available.
+  bool ready = 1;
+  // Mounts are the resolved mounts, with host source paths filled in.
+  repeated ResolvedMountSpec mounts = 2;
+  // Error is the last mount failure, verbatim.
+  string error = 3;
+}
+
+// ContainerNetworkSpec is the resolved network configuration.
+message ContainerNetworkSpec {
+  // HostNetwork shares the host network namespace instead of creating an empty one.
+  bool host_network = 1;
+}
+
+// ContainerResourcesSpec is the resolved cgroup configuration, in bytes and millicores.
+//
+// Zero means unset, which for a limit means unlimited.
+message ContainerResourcesSpec {
+  uint64 memory_limit = 1;
+  uint64 cpu_limit = 2;
+}
+
+// ContainerSecuritySpec is the resolved security posture.
+message ContainerSecuritySpec {
+  // Privileged grants all grantable capabilities and all devices, matching what extension
+  // services get implicitly.
+  bool privileged = 1;
+  repeated string capabilities_add = 2;
+  repeated string capabilities_drop = 3;
+}
+
+// ContainerSpecSpec is the spec for ContainerSpec.
+message ContainerSpecSpec {
+  // Image is the OCI reference in canonical form, already normalized by ContainerConfigController.
+  string image = 1;
+  repeated string entrypoint = 2;
+  repeated string args = 3;
+  string working_dir = 4;
+  string user = 5;
+  repeated string environment = 6;
+  repeated ContainerMountSpec mounts = 7;
+  ContainerSecuritySpec security = 8;
+  ContainerNetworkSpec network = 9;
+  ContainerResourcesSpec resources = 10;
+  ContainerDependsOnSpec depends_on = 11;
+}
+
+// ContainerStatusSpec is the spec for ContainerStatus.
+message ContainerStatusSpec {
+  // State is the fine-grained lifecycle position, derived from the newest instance.
+  talos.resource.definitions.enums.ContainersContainerState state = 1;
+  // Health is the coarse summary of State, kept stable across internal changes.
+  talos.resource.definitions.enums.ContainersContainerHealth health = 2;
+  // Image is the resolved digest once the pull completes, otherwise the requested reference.
+  string image = 3;
+  // PID of the running task; zero when not running.
+  uint32 pid = 4;
+  // ExitCode of the last task exit.
+  int32 exit_code = 5;
+  // RestartCount is the current instance generation, i.e. restarts beyond the first start.
+  uint64 restart_count = 6;
+  // Error is the last failure, verbatim, from whichever stage produced it.
+  string error = 7;
+  // WaitingFor lists the unmet dependsOn entries while State is pending.
+  repeated string waiting_for = 8;
+}
+
+// ResolvedMountSpec is a mount with its host-side source resolved.
+message ResolvedMountSpec {
+  string kind = 1;
+  // Source is the host path to bind from; empty for tmpfs.
+  string source = 2;
+  string destination = 3;
+  uint64 size = 4;
+  repeated string options = 5;
+}
+

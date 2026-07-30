@@ -23,6 +23,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/siderolabs/talos/pkg/machinery/constants"
+	containersres "github.com/siderolabs/talos/pkg/machinery/resources/containers"
 	"github.com/siderolabs/talos/pkg/machinery/resources/etcd"
 	"github.com/siderolabs/talos/pkg/machinery/resources/k8s"
 	"github.com/siderolabs/talos/pkg/machinery/resources/v1alpha1"
@@ -34,14 +35,28 @@ const ImageCleanupInterval = 15 * time.Minute
 // ImageGCGracePeriod is the minimum age of an image before it can be deleted.
 const ImageGCGracePeriod = 4 * ImageCleanupInterval
 
-// NewImageGCController creates a new ImageGCController.
+// NewImageGCController creates a new ImageGCController for the "system" containerd namespace.
 func NewImageGCController(containerdName string, buildExpectedImages bool) *ImageGCController {
-	controllerName := "cri." + containerdName + "ImageGCController"
-
 	return &ImageGCController{
 		containerdName:      containerdName,
-		controllerName:      controllerName,
+		controllerName:      "cri." + containerdName + "ImageGCController",
+		containerdNamespace: constants.SystemContainerdNamespace,
 		buildExpectedImages: buildExpectedImages,
+	}
+}
+
+// NewContainerImageGCController creates an ImageGCController for Talos-managed containers.
+//
+// It collects the taloscontainers namespace, with ContainerSpec as the expected-image set. That set
+// is authoritative even when empty: zero declared containers genuinely means "collect everything",
+// and unlike the kubelet image the cost of being wrong is a re-pull rather than a broken node.
+func NewContainerImageGCController() *ImageGCController {
+	return &ImageGCController{
+		containerdName:               "cri",
+		controllerName:               "cri.containersImageGCController",
+		containerdNamespace:          constants.TalosContainersNamespace,
+		expectContainerSpecImages:    true,
+		emptyExpectedIsAuthoritative: true,
 	}
 }
 
@@ -49,9 +64,17 @@ func NewImageGCController(containerdName string, buildExpectedImages bool) *Imag
 type ImageGCController struct {
 	ImageServiceProvider func() (ImageServiceProvider, error)
 
-	containerdName             string
-	controllerName             string
-	buildExpectedImages        bool
+	containerdName      string
+	controllerName      string
+	containerdNamespace string
+
+	// buildExpectedImages sources the expected set from the etcd and kubelet specs.
+	buildExpectedImages bool
+	// expectContainerSpecImages sources the expected set from ContainerSpec.
+	expectContainerSpecImages bool
+	// emptyExpectedIsAuthoritative allows collecting everything when the expected set is empty.
+	emptyExpectedIsAuthoritative bool
+
 	imageFirstSeenUnreferenced map[string]time.Time
 }
 
@@ -75,6 +98,17 @@ func (ctrl *ImageGCController) Inputs() []controller.Input {
 			ID:        optional.Some(ctrl.containerdName),
 			Kind:      controller.InputWeak,
 		},
+	}
+
+	if ctrl.expectContainerSpecImages {
+		inputs = append(
+			inputs,
+			controller.Input{
+				Namespace: containersres.NamespaceName,
+				Type:      containersres.ContainerSpecType,
+				Kind:      controller.InputWeak,
+			},
+		)
 	}
 
 	if ctrl.buildExpectedImages {
@@ -171,7 +205,10 @@ func (ctrl *ImageGCController) Run(ctx context.Context, r controller.Runtime, lo
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
-			if !containerdIsUp || (ctrl.buildExpectedImages && len(expectedImages) == 0) {
+			// An empty expected set normally means the inputs have not loaded yet, and collecting
+			// everything would delete the kubelet image. Where the set is authoritative, empty
+			// genuinely means "nothing is declared".
+			if !containerdIsUp || ((ctrl.buildExpectedImages || ctrl.expectContainerSpecImages) && len(expectedImages) == 0 && !ctrl.emptyExpectedIsAuthoritative) {
 				continue
 			}
 
@@ -196,6 +233,19 @@ func (ctrl *ImageGCController) Run(ctx context.Context, r controller.Runtime, lo
 			containerdIsUp = containerdService != nil && containerdService.TypedSpec().Running && containerdService.TypedSpec().Healthy
 
 			expectedImages = nil
+
+			if ctrl.expectContainerSpecImages {
+				containerSpecs, err := safe.ReaderListAll[*containersres.ContainerSpec](ctx, r)
+				if err != nil {
+					return fmt.Errorf("error listing container specs: %w", err)
+				}
+
+				for containerSpec := range containerSpecs.All() {
+					// The configured reference, not the resolved digest: an image must be protected
+					// from the moment its spec exists, including while it is still being pulled.
+					expectedImages = append(expectedImages, containerSpec.TypedSpec().Image)
+				}
+			}
 
 			if ctrl.buildExpectedImages {
 				etcdSpec, err := safe.ReaderGet[*etcd.Spec](ctx, r, resource.NewMetadata(etcd.NamespaceName, etcd.SpecType, etcd.SpecID, resource.VersionUndefined))
@@ -280,7 +330,7 @@ func buildExpectedDigests(logger *zap.Logger, actualImages []images.Image, expec
 func (ctrl *ImageGCController) cleanup(ctx context.Context, logger *zap.Logger, imageService images.Store, expectedImages []string) error {
 	logger.Debug("running image cleanup")
 
-	ctx = namespaces.WithNamespace(ctx, constants.SystemContainerdNamespace)
+	ctx = namespaces.WithNamespace(ctx, ctrl.containerdNamespace)
 
 	actualImages, err := imageService.List(ctx)
 	if err != nil {

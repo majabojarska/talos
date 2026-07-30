@@ -133,6 +133,12 @@ func getCgroupV2Resources(name string) *cgroup2.Resources {
 				Weight: new(MillicoresToCPUWeight(MilliCores(constants.CgroupUdevdMillicores))),
 			},
 		}
+	case constants.CgroupTalosContainersRoot:
+		return &cgroup2.Resources{
+			CPU: &cgroup2.CPU{
+				Weight: new(MillicoresToCPUWeight(MilliCores(constants.CgroupTalosContainersMillicores))),
+			},
+		}
 	case constants.CgroupPodRuntimeRoot:
 		return &cgroup2.Resources{
 			Memory: &cgroup2.Memory{
@@ -237,7 +243,20 @@ func getCgroupV2Resources(name string) *cgroup2.Resources {
 
 // CreateCgroup creates a cgroup, with resources limits if configured and supported.
 func CreateCgroup(name string) (CommonCgroup, error) {
-	resources := getCgroupV2Resources(name)
+	return CreateCgroupWithResources(name, getCgroupV2Resources(name))
+}
+
+// CreateCgroupWithResources creates a cgroup with caller-supplied resource limits.
+//
+// CreateCgroup derives its limits from a hardcoded table keyed on the cgroup name, which is
+// unusable when the limits come from user configuration. This variant takes them as an argument
+// instead; everything else, including the container-mode behavior, is identical.
+//
+// Passing nil means no limits.
+func CreateCgroupWithResources(name string, resources *cgroup2.Resources) (CommonCgroup, error) {
+	if resources == nil {
+		resources = &cgroup2.Resources{}
+	}
 
 	if containermode.InContainer() {
 		// don't attempt to set resources in container mode, as they might conflict with the parent cgroup tree

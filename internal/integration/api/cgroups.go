@@ -90,6 +90,7 @@ func (suite *CGroupsSuite) TestCGroupsVersion() {
 		"memory.stat",
 		"podruntime",
 		"system",
+		"taloscontainers",
 	} {
 		suite.Assert().Contains(names, subpath)
 	}

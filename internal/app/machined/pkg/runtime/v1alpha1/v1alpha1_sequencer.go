@@ -518,6 +518,11 @@ func stopAllPhaselist(r runtime.Runtime, enableKexec bool) PhaseList {
 			"denyNewServices",
 			DenyNewServices,
 		).Append(
+			// Before stopServices: that stops the CRI containerd along with everything depending on
+			// it, so containers have to be stopped first or they are killed rather than shut down.
+			"stopContainers",
+			TeardownContainerLifecycle,
+		).Append(
 			"stopServices",
 			StopServicesEphemeral,
 		).Append(

@@ -3949,6 +3949,241 @@ func (StorageMDMetadata) EnumDescriptor() ([]byte, []int) {
 	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{51}
 }
 
+// ContainersContainerState describes where a container is in its lifecycle.
+//
+// This is the fine-grained view, derived from the newest instance. It is deliberately more detailed
+// than ContainerHealth so that "waiting to retry" and "still setting up" can be told apart while
+// the coarse health value stays a stable contract.
+//
+// There is no terminal state: containers restart unconditionally, so a failing container cycles
+// between backoff and pulling indefinitely. The only way out of the cycle is stopping, and that is
+// always driven from outside, by a changed document, a removed document, or the node shutting down.
+type ContainersContainerState int32
+
+const (
+	ContainersContainerState_CONTAINER_STATE_PENDING  ContainersContainerState = 0
+	ContainersContainerState_CONTAINER_STATE_PULLING  ContainersContainerState = 1
+	ContainersContainerState_CONTAINER_STATE_STARTING ContainersContainerState = 2
+	ContainersContainerState_CONTAINER_STATE_RUNNING  ContainersContainerState = 3
+	ContainersContainerState_CONTAINER_STATE_EXITED   ContainersContainerState = 4
+	ContainersContainerState_CONTAINER_STATE_BACKOFF  ContainersContainerState = 5
+	ContainersContainerState_CONTAINER_STATE_STOPPING ContainersContainerState = 6
+)
+
+// Enum value maps for ContainersContainerState.
+var (
+	ContainersContainerState_name = map[int32]string{
+		0: "CONTAINER_STATE_PENDING",
+		1: "CONTAINER_STATE_PULLING",
+		2: "CONTAINER_STATE_STARTING",
+		3: "CONTAINER_STATE_RUNNING",
+		4: "CONTAINER_STATE_EXITED",
+		5: "CONTAINER_STATE_BACKOFF",
+		6: "CONTAINER_STATE_STOPPING",
+	}
+	ContainersContainerState_value = map[string]int32{
+		"CONTAINER_STATE_PENDING":  0,
+		"CONTAINER_STATE_PULLING":  1,
+		"CONTAINER_STATE_STARTING": 2,
+		"CONTAINER_STATE_RUNNING":  3,
+		"CONTAINER_STATE_EXITED":   4,
+		"CONTAINER_STATE_BACKOFF":  5,
+		"CONTAINER_STATE_STOPPING": 6,
+	}
+)
+
+func (x ContainersContainerState) Enum() *ContainersContainerState {
+	p := new(ContainersContainerState)
+	*p = x
+	return p
+}
+
+func (x ContainersContainerState) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ContainersContainerState) Descriptor() protoreflect.EnumDescriptor {
+	return file_resource_definitions_enums_enums_proto_enumTypes[52].Descriptor()
+}
+
+func (ContainersContainerState) Type() protoreflect.EnumType {
+	return &file_resource_definitions_enums_enums_proto_enumTypes[52]
+}
+
+func (x ContainersContainerState) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ContainersContainerState.Descriptor instead.
+func (ContainersContainerState) EnumDescriptor() ([]byte, []int) {
+	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{52}
+}
+
+// ContainersContainerHealth is the coarse answer to "should I be looking at this container?".
+type ContainersContainerHealth int32
+
+const (
+	ContainersContainerHealth_CONTAINER_HEALTH_PENDING  ContainersContainerHealth = 0
+	ContainersContainerHealth_CONTAINER_HEALTH_PULLING  ContainersContainerHealth = 1
+	ContainersContainerHealth_CONTAINER_HEALTH_HEALTHY  ContainersContainerHealth = 2
+	ContainersContainerHealth_CONTAINER_HEALTH_DEGRADED ContainersContainerHealth = 3
+)
+
+// Enum value maps for ContainersContainerHealth.
+var (
+	ContainersContainerHealth_name = map[int32]string{
+		0: "CONTAINER_HEALTH_PENDING",
+		1: "CONTAINER_HEALTH_PULLING",
+		2: "CONTAINER_HEALTH_HEALTHY",
+		3: "CONTAINER_HEALTH_DEGRADED",
+	}
+	ContainersContainerHealth_value = map[string]int32{
+		"CONTAINER_HEALTH_PENDING":  0,
+		"CONTAINER_HEALTH_PULLING":  1,
+		"CONTAINER_HEALTH_HEALTHY":  2,
+		"CONTAINER_HEALTH_DEGRADED": 3,
+	}
+)
+
+func (x ContainersContainerHealth) Enum() *ContainersContainerHealth {
+	p := new(ContainersContainerHealth)
+	*p = x
+	return p
+}
+
+func (x ContainersContainerHealth) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ContainersContainerHealth) Descriptor() protoreflect.EnumDescriptor {
+	return file_resource_definitions_enums_enums_proto_enumTypes[53].Descriptor()
+}
+
+func (ContainersContainerHealth) Type() protoreflect.EnumType {
+	return &file_resource_definitions_enums_enums_proto_enumTypes[53]
+}
+
+func (x ContainersContainerHealth) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ContainersContainerHealth.Descriptor instead.
+func (ContainersContainerHealth) EnumDescriptor() ([]byte, []int) {
+	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{53}
+}
+
+// ContainersContainerImagePhase describes the state of a container's image pull.
+type ContainersContainerImagePhase int32
+
+const (
+	ContainersContainerImagePhase_CONTAINER_IMAGE_PHASE_PENDING ContainersContainerImagePhase = 0
+	ContainersContainerImagePhase_CONTAINER_IMAGE_PHASE_PULLING ContainersContainerImagePhase = 1
+	ContainersContainerImagePhase_CONTAINER_IMAGE_PHASE_READY   ContainersContainerImagePhase = 2
+	ContainersContainerImagePhase_CONTAINER_IMAGE_PHASE_FAILED  ContainersContainerImagePhase = 3
+)
+
+// Enum value maps for ContainersContainerImagePhase.
+var (
+	ContainersContainerImagePhase_name = map[int32]string{
+		0: "CONTAINER_IMAGE_PHASE_PENDING",
+		1: "CONTAINER_IMAGE_PHASE_PULLING",
+		2: "CONTAINER_IMAGE_PHASE_READY",
+		3: "CONTAINER_IMAGE_PHASE_FAILED",
+	}
+	ContainersContainerImagePhase_value = map[string]int32{
+		"CONTAINER_IMAGE_PHASE_PENDING": 0,
+		"CONTAINER_IMAGE_PHASE_PULLING": 1,
+		"CONTAINER_IMAGE_PHASE_READY":   2,
+		"CONTAINER_IMAGE_PHASE_FAILED":  3,
+	}
+)
+
+func (x ContainersContainerImagePhase) Enum() *ContainersContainerImagePhase {
+	p := new(ContainersContainerImagePhase)
+	*p = x
+	return p
+}
+
+func (x ContainersContainerImagePhase) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ContainersContainerImagePhase) Descriptor() protoreflect.EnumDescriptor {
+	return file_resource_definitions_enums_enums_proto_enumTypes[54].Descriptor()
+}
+
+func (ContainersContainerImagePhase) Type() protoreflect.EnumType {
+	return &file_resource_definitions_enums_enums_proto_enumTypes[54]
+}
+
+func (x ContainersContainerImagePhase) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ContainersContainerImagePhase.Descriptor instead.
+func (ContainersContainerImagePhase) EnumDescriptor() ([]byte, []int) {
+	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{54}
+}
+
+// ContainersContainerInstancePhase describes the state of a single container execution.
+type ContainersContainerInstancePhase int32
+
+const (
+	// ContainerInstancePhaseCreated means the instance exists but the task has not started yet.
+	ContainersContainerInstancePhase_CONTAINER_INSTANCE_PHASE_CREATED ContainersContainerInstancePhase = 0
+	// ContainerInstancePhaseRunning means the task is running.
+	ContainersContainerInstancePhase_CONTAINER_INSTANCE_PHASE_RUNNING ContainersContainerInstancePhase = 1
+	// ContainerInstancePhaseTerminated means the task exited, for any reason. The exit code and
+	// error carry the detail; the instance controller decides what happens next.
+	ContainersContainerInstancePhase_CONTAINER_INSTANCE_PHASE_TERMINATED ContainersContainerInstancePhase = 2
+	// ContainerInstancePhaseFailed means setup failed before the task ever started, e.g. the
+	// cgroup or container could not be created.
+	ContainersContainerInstancePhase_CONTAINER_INSTANCE_PHASE_FAILED ContainersContainerInstancePhase = 3
+)
+
+// Enum value maps for ContainersContainerInstancePhase.
+var (
+	ContainersContainerInstancePhase_name = map[int32]string{
+		0: "CONTAINER_INSTANCE_PHASE_CREATED",
+		1: "CONTAINER_INSTANCE_PHASE_RUNNING",
+		2: "CONTAINER_INSTANCE_PHASE_TERMINATED",
+		3: "CONTAINER_INSTANCE_PHASE_FAILED",
+	}
+	ContainersContainerInstancePhase_value = map[string]int32{
+		"CONTAINER_INSTANCE_PHASE_CREATED":    0,
+		"CONTAINER_INSTANCE_PHASE_RUNNING":    1,
+		"CONTAINER_INSTANCE_PHASE_TERMINATED": 2,
+		"CONTAINER_INSTANCE_PHASE_FAILED":     3,
+	}
+)
+
+func (x ContainersContainerInstancePhase) Enum() *ContainersContainerInstancePhase {
+	p := new(ContainersContainerInstancePhase)
+	*p = x
+	return p
+}
+
+func (x ContainersContainerInstancePhase) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ContainersContainerInstancePhase) Descriptor() protoreflect.EnumDescriptor {
+	return file_resource_definitions_enums_enums_proto_enumTypes[55].Descriptor()
+}
+
+func (ContainersContainerInstancePhase) Type() protoreflect.EnumType {
+	return &file_resource_definitions_enums_enums_proto_enumTypes[55]
+}
+
+func (x ContainersContainerInstancePhase) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ContainersContainerInstancePhase.Descriptor instead.
+func (ContainersContainerInstancePhase) EnumDescriptor() ([]byte, []int) {
+	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{55}
+}
+
 // CriImageCacheStatus describes image cache status type.
 type CriImageCacheStatus int32
 
@@ -3986,11 +4221,11 @@ func (x CriImageCacheStatus) String() string {
 }
 
 func (CriImageCacheStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_resource_definitions_enums_enums_proto_enumTypes[52].Descriptor()
+	return file_resource_definitions_enums_enums_proto_enumTypes[56].Descriptor()
 }
 
 func (CriImageCacheStatus) Type() protoreflect.EnumType {
-	return &file_resource_definitions_enums_enums_proto_enumTypes[52]
+	return &file_resource_definitions_enums_enums_proto_enumTypes[56]
 }
 
 func (x CriImageCacheStatus) Number() protoreflect.EnumNumber {
@@ -3999,7 +4234,7 @@ func (x CriImageCacheStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CriImageCacheStatus.Descriptor instead.
 func (CriImageCacheStatus) EnumDescriptor() ([]byte, []int) {
-	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{52}
+	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{56}
 }
 
 // CriImageCacheCopyStatus describes image cache copy status type.
@@ -4039,11 +4274,11 @@ func (x CriImageCacheCopyStatus) String() string {
 }
 
 func (CriImageCacheCopyStatus) Descriptor() protoreflect.EnumDescriptor {
-	return file_resource_definitions_enums_enums_proto_enumTypes[53].Descriptor()
+	return file_resource_definitions_enums_enums_proto_enumTypes[57].Descriptor()
 }
 
 func (CriImageCacheCopyStatus) Type() protoreflect.EnumType {
-	return &file_resource_definitions_enums_enums_proto_enumTypes[53]
+	return &file_resource_definitions_enums_enums_proto_enumTypes[57]
 }
 
 func (x CriImageCacheCopyStatus) Number() protoreflect.EnumNumber {
@@ -4052,7 +4287,7 @@ func (x CriImageCacheCopyStatus) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use CriImageCacheCopyStatus.Descriptor instead.
 func (CriImageCacheCopyStatus) EnumDescriptor() ([]byte, []int) {
-	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{53}
+	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{57}
 }
 
 // KubespanPeerState is KubeSpan peer current state.
@@ -4089,11 +4324,11 @@ func (x KubespanPeerState) String() string {
 }
 
 func (KubespanPeerState) Descriptor() protoreflect.EnumDescriptor {
-	return file_resource_definitions_enums_enums_proto_enumTypes[54].Descriptor()
+	return file_resource_definitions_enums_enums_proto_enumTypes[58].Descriptor()
 }
 
 func (KubespanPeerState) Type() protoreflect.EnumType {
-	return &file_resource_definitions_enums_enums_proto_enumTypes[54]
+	return &file_resource_definitions_enums_enums_proto_enumTypes[58]
 }
 
 func (x KubespanPeerState) Number() protoreflect.EnumNumber {
@@ -4102,7 +4337,7 @@ func (x KubespanPeerState) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use KubespanPeerState.Descriptor instead.
 func (KubespanPeerState) EnumDescriptor() ([]byte, []int) {
-	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{54}
+	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{58}
 }
 
 // NetworkConfigLayer describes network configuration layers, with lowest priority first.
@@ -4145,11 +4380,11 @@ func (x NetworkConfigLayer) String() string {
 }
 
 func (NetworkConfigLayer) Descriptor() protoreflect.EnumDescriptor {
-	return file_resource_definitions_enums_enums_proto_enumTypes[55].Descriptor()
+	return file_resource_definitions_enums_enums_proto_enumTypes[59].Descriptor()
 }
 
 func (NetworkConfigLayer) Type() protoreflect.EnumType {
-	return &file_resource_definitions_enums_enums_proto_enumTypes[55]
+	return &file_resource_definitions_enums_enums_proto_enumTypes[59]
 }
 
 func (x NetworkConfigLayer) Number() protoreflect.EnumNumber {
@@ -4158,7 +4393,7 @@ func (x NetworkConfigLayer) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use NetworkConfigLayer.Descriptor instead.
 func (NetworkConfigLayer) EnumDescriptor() ([]byte, []int) {
-	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{55}
+	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{59}
 }
 
 // NetworkOperator enumerates Talos network operators.
@@ -4195,11 +4430,11 @@ func (x NetworkOperator) String() string {
 }
 
 func (NetworkOperator) Descriptor() protoreflect.EnumDescriptor {
-	return file_resource_definitions_enums_enums_proto_enumTypes[56].Descriptor()
+	return file_resource_definitions_enums_enums_proto_enumTypes[60].Descriptor()
 }
 
 func (NetworkOperator) Type() protoreflect.EnumType {
-	return &file_resource_definitions_enums_enums_proto_enumTypes[56]
+	return &file_resource_definitions_enums_enums_proto_enumTypes[60]
 }
 
 func (x NetworkOperator) Number() protoreflect.EnumNumber {
@@ -4208,7 +4443,7 @@ func (x NetworkOperator) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use NetworkOperator.Descriptor instead.
 func (NetworkOperator) EnumDescriptor() ([]byte, []int) {
-	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{56}
+	return file_resource_definitions_enums_enums_proto_rawDescGZIP(), []int{60}
 }
 
 var File_resource_definitions_enums_enums_proto protoreflect.FileDescriptor
@@ -4898,7 +5133,30 @@ const file_resource_definitions_enums_enums_proto_rawDesc = "" +
 	"\x0eMD_LEVEL_RAID1\x10\x00*9\n" +
 	"\x11StorageMDMetadata\x12\x11\n" +
 	"\rMD_METADATA10\x10\x00\x12\x11\n" +
-	"\rMD_METADATA12\x10\x01*\x96\x01\n" +
+	"\rMD_METADATA12\x10\x01*\xe6\x01\n" +
+	"\x18ContainersContainerState\x12\x1b\n" +
+	"\x17CONTAINER_STATE_PENDING\x10\x00\x12\x1b\n" +
+	"\x17CONTAINER_STATE_PULLING\x10\x01\x12\x1c\n" +
+	"\x18CONTAINER_STATE_STARTING\x10\x02\x12\x1b\n" +
+	"\x17CONTAINER_STATE_RUNNING\x10\x03\x12\x1a\n" +
+	"\x16CONTAINER_STATE_EXITED\x10\x04\x12\x1b\n" +
+	"\x17CONTAINER_STATE_BACKOFF\x10\x05\x12\x1c\n" +
+	"\x18CONTAINER_STATE_STOPPING\x10\x06*\x94\x01\n" +
+	"\x19ContainersContainerHealth\x12\x1c\n" +
+	"\x18CONTAINER_HEALTH_PENDING\x10\x00\x12\x1c\n" +
+	"\x18CONTAINER_HEALTH_PULLING\x10\x01\x12\x1c\n" +
+	"\x18CONTAINER_HEALTH_HEALTHY\x10\x02\x12\x1d\n" +
+	"\x19CONTAINER_HEALTH_DEGRADED\x10\x03*\xa8\x01\n" +
+	"\x1dContainersContainerImagePhase\x12!\n" +
+	"\x1dCONTAINER_IMAGE_PHASE_PENDING\x10\x00\x12!\n" +
+	"\x1dCONTAINER_IMAGE_PHASE_PULLING\x10\x01\x12\x1f\n" +
+	"\x1bCONTAINER_IMAGE_PHASE_READY\x10\x02\x12 \n" +
+	"\x1cCONTAINER_IMAGE_PHASE_FAILED\x10\x03*\xbc\x01\n" +
+	" ContainersContainerInstancePhase\x12$\n" +
+	" CONTAINER_INSTANCE_PHASE_CREATED\x10\x00\x12$\n" +
+	" CONTAINER_INSTANCE_PHASE_RUNNING\x10\x01\x12'\n" +
+	"#CONTAINER_INSTANCE_PHASE_TERMINATED\x10\x02\x12#\n" +
+	"\x1fCONTAINER_INSTANCE_PHASE_FAILED\x10\x03*\x96\x01\n" +
 	"\x13CriImageCacheStatus\x12\x1e\n" +
 	"\x1aIMAGE_CACHE_STATUS_UNKNOWN\x10\x00\x12\x1f\n" +
 	"\x1bIMAGE_CACHE_STATUS_DISABLED\x10\x01\x12 \n" +
@@ -4937,65 +5195,69 @@ func file_resource_definitions_enums_enums_proto_rawDescGZIP() []byte {
 	return file_resource_definitions_enums_enums_proto_rawDescData
 }
 
-var file_resource_definitions_enums_enums_proto_enumTypes = make([]protoimpl.EnumInfo, 57)
+var file_resource_definitions_enums_enums_proto_enumTypes = make([]protoimpl.EnumInfo, 61)
 var file_resource_definitions_enums_enums_proto_goTypes = []any{
-	(RuntimeKernelModuleState)(0),        // 0: talos.resource.definitions.enums.RuntimeKernelModuleState
-	(RuntimeKernelModuleType)(0),         // 1: talos.resource.definitions.enums.RuntimeKernelModuleType
-	(RuntimeMachineStage)(0),             // 2: talos.resource.definitions.enums.RuntimeMachineStage
-	(RuntimeSELinuxState)(0),             // 3: talos.resource.definitions.enums.RuntimeSELinuxState
-	(RuntimeFIPSState)(0),                // 4: talos.resource.definitions.enums.RuntimeFIPSState
-	(RuntimeUnattendedInstallPhase)(0),   // 5: talos.resource.definitions.enums.RuntimeUnattendedInstallPhase
-	(MachineType)(0),                     // 6: talos.resource.definitions.enums.MachineType
-	(NethelpersAddressFlag)(0),           // 7: talos.resource.definitions.enums.NethelpersAddressFlag
-	(NethelpersAddressSortAlgorithm)(0),  // 8: talos.resource.definitions.enums.NethelpersAddressSortAlgorithm
-	(NethelpersADLACPActive)(0),          // 9: talos.resource.definitions.enums.NethelpersADLACPActive
-	(NethelpersADSelect)(0),              // 10: talos.resource.definitions.enums.NethelpersADSelect
-	(NethelpersARPAllTargets)(0),         // 11: talos.resource.definitions.enums.NethelpersARPAllTargets
-	(NethelpersARPValidate)(0),           // 12: talos.resource.definitions.enums.NethelpersARPValidate
-	(NethelpersAutoHostnameKind)(0),      // 13: talos.resource.definitions.enums.NethelpersAutoHostnameKind
-	(NethelpersBGPSessionState)(0),       // 14: talos.resource.definitions.enums.NethelpersBGPSessionState
-	(NethelpersBondMode)(0),              // 15: talos.resource.definitions.enums.NethelpersBondMode
-	(NethelpersBondXmitHashPolicy)(0),    // 16: talos.resource.definitions.enums.NethelpersBondXmitHashPolicy
-	(NethelpersClientIdentifier)(0),      // 17: talos.resource.definitions.enums.NethelpersClientIdentifier
-	(NethelpersConntrackState)(0),        // 18: talos.resource.definitions.enums.NethelpersConntrackState
-	(NethelpersDNSProtocol)(0),           // 19: talos.resource.definitions.enums.NethelpersDNSProtocol
-	(NethelpersDuplex)(0),                // 20: talos.resource.definitions.enums.NethelpersDuplex
-	(NethelpersFailOverMAC)(0),           // 21: talos.resource.definitions.enums.NethelpersFailOverMAC
-	(NethelpersFamily)(0),                // 22: talos.resource.definitions.enums.NethelpersFamily
-	(NethelpersICMPType)(0),              // 23: talos.resource.definitions.enums.NethelpersICMPType
-	(NethelpersLACPRate)(0),              // 24: talos.resource.definitions.enums.NethelpersLACPRate
-	(NethelpersLinkType)(0),              // 25: talos.resource.definitions.enums.NethelpersLinkType
-	(NethelpersMatchOperator)(0),         // 26: talos.resource.definitions.enums.NethelpersMatchOperator
-	(NethelpersNfTablesChainHook)(0),     // 27: talos.resource.definitions.enums.NethelpersNfTablesChainHook
-	(NethelpersNfTablesChainPriority)(0), // 28: talos.resource.definitions.enums.NethelpersNfTablesChainPriority
-	(NethelpersNfTablesVerdict)(0),       // 29: talos.resource.definitions.enums.NethelpersNfTablesVerdict
-	(NethelpersOperationalState)(0),      // 30: talos.resource.definitions.enums.NethelpersOperationalState
-	(NethelpersPort)(0),                  // 31: talos.resource.definitions.enums.NethelpersPort
-	(NethelpersPrimaryReselect)(0),       // 32: talos.resource.definitions.enums.NethelpersPrimaryReselect
-	(NethelpersProtocol)(0),              // 33: talos.resource.definitions.enums.NethelpersProtocol
-	(NethelpersRouteFlag)(0),             // 34: talos.resource.definitions.enums.NethelpersRouteFlag
-	(NethelpersRouteProtocol)(0),         // 35: talos.resource.definitions.enums.NethelpersRouteProtocol
-	(NethelpersRouteType)(0),             // 36: talos.resource.definitions.enums.NethelpersRouteType
-	(NethelpersRoutingRuleAction)(0),     // 37: talos.resource.definitions.enums.NethelpersRoutingRuleAction
-	(NethelpersRoutingTable)(0),          // 38: talos.resource.definitions.enums.NethelpersRoutingTable
-	(NethelpersScope)(0),                 // 39: talos.resource.definitions.enums.NethelpersScope
-	(NethelpersVLANProtocol)(0),          // 40: talos.resource.definitions.enums.NethelpersVLANProtocol
-	(NethelpersWOLMode)(0),               // 41: talos.resource.definitions.enums.NethelpersWOLMode
-	(BlockEncryptionKeyType)(0),          // 42: talos.resource.definitions.enums.BlockEncryptionKeyType
-	(BlockEncryptionProviderType)(0),     // 43: talos.resource.definitions.enums.BlockEncryptionProviderType
-	(BlockFilesystemType)(0),             // 44: talos.resource.definitions.enums.BlockFilesystemType
-	(BlockFSParameterType)(0),            // 45: talos.resource.definitions.enums.BlockFSParameterType
-	(BlockVolumePhase)(0),                // 46: talos.resource.definitions.enums.BlockVolumePhase
-	(BlockVolumeType)(0),                 // 47: talos.resource.definitions.enums.BlockVolumeType
-	(StorageLVMLogicalVolumeType)(0),     // 48: talos.resource.definitions.enums.StorageLVMLogicalVolumeType
-	(StorageMDArrayPhase)(0),             // 49: talos.resource.definitions.enums.StorageMDArrayPhase
-	(StorageMDLevel)(0),                  // 50: talos.resource.definitions.enums.StorageMDLevel
-	(StorageMDMetadata)(0),               // 51: talos.resource.definitions.enums.StorageMDMetadata
-	(CriImageCacheStatus)(0),             // 52: talos.resource.definitions.enums.CriImageCacheStatus
-	(CriImageCacheCopyStatus)(0),         // 53: talos.resource.definitions.enums.CriImageCacheCopyStatus
-	(KubespanPeerState)(0),               // 54: talos.resource.definitions.enums.KubespanPeerState
-	(NetworkConfigLayer)(0),              // 55: talos.resource.definitions.enums.NetworkConfigLayer
-	(NetworkOperator)(0),                 // 56: talos.resource.definitions.enums.NetworkOperator
+	(RuntimeKernelModuleState)(0),         // 0: talos.resource.definitions.enums.RuntimeKernelModuleState
+	(RuntimeKernelModuleType)(0),          // 1: talos.resource.definitions.enums.RuntimeKernelModuleType
+	(RuntimeMachineStage)(0),              // 2: talos.resource.definitions.enums.RuntimeMachineStage
+	(RuntimeSELinuxState)(0),              // 3: talos.resource.definitions.enums.RuntimeSELinuxState
+	(RuntimeFIPSState)(0),                 // 4: talos.resource.definitions.enums.RuntimeFIPSState
+	(RuntimeUnattendedInstallPhase)(0),    // 5: talos.resource.definitions.enums.RuntimeUnattendedInstallPhase
+	(MachineType)(0),                      // 6: talos.resource.definitions.enums.MachineType
+	(NethelpersAddressFlag)(0),            // 7: talos.resource.definitions.enums.NethelpersAddressFlag
+	(NethelpersAddressSortAlgorithm)(0),   // 8: talos.resource.definitions.enums.NethelpersAddressSortAlgorithm
+	(NethelpersADLACPActive)(0),           // 9: talos.resource.definitions.enums.NethelpersADLACPActive
+	(NethelpersADSelect)(0),               // 10: talos.resource.definitions.enums.NethelpersADSelect
+	(NethelpersARPAllTargets)(0),          // 11: talos.resource.definitions.enums.NethelpersARPAllTargets
+	(NethelpersARPValidate)(0),            // 12: talos.resource.definitions.enums.NethelpersARPValidate
+	(NethelpersAutoHostnameKind)(0),       // 13: talos.resource.definitions.enums.NethelpersAutoHostnameKind
+	(NethelpersBGPSessionState)(0),        // 14: talos.resource.definitions.enums.NethelpersBGPSessionState
+	(NethelpersBondMode)(0),               // 15: talos.resource.definitions.enums.NethelpersBondMode
+	(NethelpersBondXmitHashPolicy)(0),     // 16: talos.resource.definitions.enums.NethelpersBondXmitHashPolicy
+	(NethelpersClientIdentifier)(0),       // 17: talos.resource.definitions.enums.NethelpersClientIdentifier
+	(NethelpersConntrackState)(0),         // 18: talos.resource.definitions.enums.NethelpersConntrackState
+	(NethelpersDNSProtocol)(0),            // 19: talos.resource.definitions.enums.NethelpersDNSProtocol
+	(NethelpersDuplex)(0),                 // 20: talos.resource.definitions.enums.NethelpersDuplex
+	(NethelpersFailOverMAC)(0),            // 21: talos.resource.definitions.enums.NethelpersFailOverMAC
+	(NethelpersFamily)(0),                 // 22: talos.resource.definitions.enums.NethelpersFamily
+	(NethelpersICMPType)(0),               // 23: talos.resource.definitions.enums.NethelpersICMPType
+	(NethelpersLACPRate)(0),               // 24: talos.resource.definitions.enums.NethelpersLACPRate
+	(NethelpersLinkType)(0),               // 25: talos.resource.definitions.enums.NethelpersLinkType
+	(NethelpersMatchOperator)(0),          // 26: talos.resource.definitions.enums.NethelpersMatchOperator
+	(NethelpersNfTablesChainHook)(0),      // 27: talos.resource.definitions.enums.NethelpersNfTablesChainHook
+	(NethelpersNfTablesChainPriority)(0),  // 28: talos.resource.definitions.enums.NethelpersNfTablesChainPriority
+	(NethelpersNfTablesVerdict)(0),        // 29: talos.resource.definitions.enums.NethelpersNfTablesVerdict
+	(NethelpersOperationalState)(0),       // 30: talos.resource.definitions.enums.NethelpersOperationalState
+	(NethelpersPort)(0),                   // 31: talos.resource.definitions.enums.NethelpersPort
+	(NethelpersPrimaryReselect)(0),        // 32: talos.resource.definitions.enums.NethelpersPrimaryReselect
+	(NethelpersProtocol)(0),               // 33: talos.resource.definitions.enums.NethelpersProtocol
+	(NethelpersRouteFlag)(0),              // 34: talos.resource.definitions.enums.NethelpersRouteFlag
+	(NethelpersRouteProtocol)(0),          // 35: talos.resource.definitions.enums.NethelpersRouteProtocol
+	(NethelpersRouteType)(0),              // 36: talos.resource.definitions.enums.NethelpersRouteType
+	(NethelpersRoutingRuleAction)(0),      // 37: talos.resource.definitions.enums.NethelpersRoutingRuleAction
+	(NethelpersRoutingTable)(0),           // 38: talos.resource.definitions.enums.NethelpersRoutingTable
+	(NethelpersScope)(0),                  // 39: talos.resource.definitions.enums.NethelpersScope
+	(NethelpersVLANProtocol)(0),           // 40: talos.resource.definitions.enums.NethelpersVLANProtocol
+	(NethelpersWOLMode)(0),                // 41: talos.resource.definitions.enums.NethelpersWOLMode
+	(BlockEncryptionKeyType)(0),           // 42: talos.resource.definitions.enums.BlockEncryptionKeyType
+	(BlockEncryptionProviderType)(0),      // 43: talos.resource.definitions.enums.BlockEncryptionProviderType
+	(BlockFilesystemType)(0),              // 44: talos.resource.definitions.enums.BlockFilesystemType
+	(BlockFSParameterType)(0),             // 45: talos.resource.definitions.enums.BlockFSParameterType
+	(BlockVolumePhase)(0),                 // 46: talos.resource.definitions.enums.BlockVolumePhase
+	(BlockVolumeType)(0),                  // 47: talos.resource.definitions.enums.BlockVolumeType
+	(StorageLVMLogicalVolumeType)(0),      // 48: talos.resource.definitions.enums.StorageLVMLogicalVolumeType
+	(StorageMDArrayPhase)(0),              // 49: talos.resource.definitions.enums.StorageMDArrayPhase
+	(StorageMDLevel)(0),                   // 50: talos.resource.definitions.enums.StorageMDLevel
+	(StorageMDMetadata)(0),                // 51: talos.resource.definitions.enums.StorageMDMetadata
+	(ContainersContainerState)(0),         // 52: talos.resource.definitions.enums.ContainersContainerState
+	(ContainersContainerHealth)(0),        // 53: talos.resource.definitions.enums.ContainersContainerHealth
+	(ContainersContainerImagePhase)(0),    // 54: talos.resource.definitions.enums.ContainersContainerImagePhase
+	(ContainersContainerInstancePhase)(0), // 55: talos.resource.definitions.enums.ContainersContainerInstancePhase
+	(CriImageCacheStatus)(0),              // 56: talos.resource.definitions.enums.CriImageCacheStatus
+	(CriImageCacheCopyStatus)(0),          // 57: talos.resource.definitions.enums.CriImageCacheCopyStatus
+	(KubespanPeerState)(0),                // 58: talos.resource.definitions.enums.KubespanPeerState
+	(NetworkConfigLayer)(0),               // 59: talos.resource.definitions.enums.NetworkConfigLayer
+	(NetworkOperator)(0),                  // 60: talos.resource.definitions.enums.NetworkOperator
 }
 var file_resource_definitions_enums_enums_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -5015,7 +5277,7 @@ func file_resource_definitions_enums_enums_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_resource_definitions_enums_enums_proto_rawDesc), len(file_resource_definitions_enums_enums_proto_rawDesc)),
-			NumEnums:      57,
+			NumEnums:      61,
 			NumMessages:   0,
 			NumExtensions: 0,
 			NumServices:   0,

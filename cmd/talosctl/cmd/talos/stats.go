@@ -16,15 +16,15 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	machineapi "github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
 	"github.com/siderolabs/talos/pkg/machinery/client/multiplex"
-	"github.com/siderolabs/talos/pkg/machinery/constants"
 )
 
 var statsCmdFlags struct {
 	kubernetesNamespaceFlag
+
+	namespace string
 }
 
 // statsCmd represents the stats command.
@@ -43,17 +43,9 @@ var statsCmd = &cobra.Command{
 
 		defer clientFactory.Close() //nolint:errcheck
 
-		var (
-			namespace string
-			driver    common.ContainerDriver
-		)
-
-		if statsCmdFlags.kubernetes {
-			namespace = constants.K8sContainerdNamespace
-			driver = common.ContainerDriver_CRI
-		} else {
-			namespace = constants.SystemContainerdNamespace
-			driver = common.ContainerDriver_CONTAINERD
+		namespace, driver, err := resolveContainerNamespace(statsCmdFlags.kubernetes, statsCmdFlags.namespace)
+		if err != nil {
+			return err
 		}
 
 		responseChan := multiplex.UnaryViaFactory(
@@ -110,6 +102,7 @@ var statsCmd = &cobra.Command{
 
 func init() {
 	statsCmd.Flags().BoolVarP(&statsCmdFlags.kubernetes, "kubernetes", "k", false, "use the k8s.io containerd namespace")
+	statsCmd.Flags().StringVar(&statsCmdFlags.namespace, "namespace", "", "containerd namespace to use (e.g. taloscontainers)")
 
 	statsCmd.Flags().Bool("use-cri", false, "use the CRI driver")
 	statsCmd.Flags().MarkHidden("use-cri") //nolint:errcheck

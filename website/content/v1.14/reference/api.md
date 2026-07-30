@@ -306,6 +306,10 @@ description: Talos gRPC API reference.
     - [BlockFilesystemType](#talos.resource.definitions.enums.BlockFilesystemType)
     - [BlockVolumePhase](#talos.resource.definitions.enums.BlockVolumePhase)
     - [BlockVolumeType](#talos.resource.definitions.enums.BlockVolumeType)
+    - [ContainersContainerHealth](#talos.resource.definitions.enums.ContainersContainerHealth)
+    - [ContainersContainerImagePhase](#talos.resource.definitions.enums.ContainersContainerImagePhase)
+    - [ContainersContainerInstancePhase](#talos.resource.definitions.enums.ContainersContainerInstancePhase)
+    - [ContainersContainerState](#talos.resource.definitions.enums.ContainersContainerState)
     - [CriImageCacheCopyStatus](#talos.resource.definitions.enums.CriImageCacheCopyStatus)
     - [CriImageCacheStatus](#talos.resource.definitions.enums.CriImageCacheStatus)
     - [KubespanPeerState](#talos.resource.definitions.enums.KubespanPeerState)
@@ -400,6 +404,20 @@ description: Talos gRPC API reference.
     - [KubeSpanAffiliateSpec](#talos.resource.definitions.cluster.KubeSpanAffiliateSpec)
     - [MemberSpec](#talos.resource.definitions.cluster.MemberSpec)
     - [ServiceEndpoint](#talos.resource.definitions.cluster.ServiceEndpoint)
+  
+- [resource/definitions/containers/containers.proto](#resource/definitions/containers/containers.proto)
+    - [ContainerDependsOnSpec](#talos.resource.definitions.containers.ContainerDependsOnSpec)
+    - [ContainerImageStatusSpec](#talos.resource.definitions.containers.ContainerImageStatusSpec)
+    - [ContainerInstanceSpecSpec](#talos.resource.definitions.containers.ContainerInstanceSpecSpec)
+    - [ContainerInstanceStatusSpec](#talos.resource.definitions.containers.ContainerInstanceStatusSpec)
+    - [ContainerMountSpec](#talos.resource.definitions.containers.ContainerMountSpec)
+    - [ContainerMountStatusSpec](#talos.resource.definitions.containers.ContainerMountStatusSpec)
+    - [ContainerNetworkSpec](#talos.resource.definitions.containers.ContainerNetworkSpec)
+    - [ContainerResourcesSpec](#talos.resource.definitions.containers.ContainerResourcesSpec)
+    - [ContainerSecuritySpec](#talos.resource.definitions.containers.ContainerSecuritySpec)
+    - [ContainerSpecSpec](#talos.resource.definitions.containers.ContainerSpecSpec)
+    - [ContainerStatusSpec](#talos.resource.definitions.containers.ContainerStatusSpec)
+    - [ResolvedMountSpec](#talos.resource.definitions.containers.ResolvedMountSpec)
   
 - [resource/definitions/cri/cri.proto](#resource/definitions/cri/cri.proto)
     - [BaseRuntimeSpecConfigSpec](#talos.resource.definitions.cri.BaseRuntimeSpecConfigSpec)
@@ -5269,6 +5287,73 @@ BlockVolumeType describes volume type.
 
 
 
+<a name="talos.resource.definitions.enums.ContainersContainerHealth"></a>
+
+### ContainersContainerHealth
+ContainersContainerHealth is the coarse answer to "should I be looking at this container?".
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONTAINER_HEALTH_PENDING | 0 |  |
+| CONTAINER_HEALTH_PULLING | 1 |  |
+| CONTAINER_HEALTH_HEALTHY | 2 |  |
+| CONTAINER_HEALTH_DEGRADED | 3 |  |
+
+
+
+<a name="talos.resource.definitions.enums.ContainersContainerImagePhase"></a>
+
+### ContainersContainerImagePhase
+ContainersContainerImagePhase describes the state of a container's image pull.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONTAINER_IMAGE_PHASE_PENDING | 0 |  |
+| CONTAINER_IMAGE_PHASE_PULLING | 1 |  |
+| CONTAINER_IMAGE_PHASE_READY | 2 |  |
+| CONTAINER_IMAGE_PHASE_FAILED | 3 |  |
+
+
+
+<a name="talos.resource.definitions.enums.ContainersContainerInstancePhase"></a>
+
+### ContainersContainerInstancePhase
+ContainersContainerInstancePhase describes the state of a single container execution.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONTAINER_INSTANCE_PHASE_CREATED | 0 | ContainerInstancePhaseCreated means the instance exists but the task has not started yet. |
+| CONTAINER_INSTANCE_PHASE_RUNNING | 1 | ContainerInstancePhaseRunning means the task is running. |
+| CONTAINER_INSTANCE_PHASE_TERMINATED | 2 | ContainerInstancePhaseTerminated means the task exited, for any reason. The exit code and error carry the detail; the instance controller decides what happens next. |
+| CONTAINER_INSTANCE_PHASE_FAILED | 3 | ContainerInstancePhaseFailed means setup failed before the task ever started, e.g. the cgroup or container could not be created. |
+
+
+
+<a name="talos.resource.definitions.enums.ContainersContainerState"></a>
+
+### ContainersContainerState
+ContainersContainerState describes where a container is in its lifecycle.
+
+This is the fine-grained view, derived from the newest instance. It is deliberately more detailed
+than ContainerHealth so that "waiting to retry" and "still setting up" can be told apart while
+the coarse health value stays a stable contract.
+
+There is no terminal state: containers restart unconditionally, so a failing container cycles
+between backoff and pulling indefinitely. The only way out of the cycle is stopping, and that is
+always driven from outside, by a changed document, a removed document, or the node shutting down.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| CONTAINER_STATE_PENDING | 0 |  |
+| CONTAINER_STATE_PULLING | 1 |  |
+| CONTAINER_STATE_STARTING | 2 |  |
+| CONTAINER_STATE_RUNNING | 3 |  |
+| CONTAINER_STATE_EXITED | 4 |  |
+| CONTAINER_STATE_BACKOFF | 5 |  |
+| CONTAINER_STATE_STOPPING | 6 |  |
+
+
+
 <a name="talos.resource.definitions.enums.CriImageCacheCopyStatus"></a>
 
 ### CriImageCacheCopyStatus
@@ -7172,6 +7257,267 @@ ServiceEndpoint describes a service endpoint for discovery.
 | name | [string](#string) |  |  |
 | endpoint | [string](#string) |  |  |
 | insecure | [bool](#bool) |  |  |
+
+
+
+
+
+ <!-- end messages -->
+
+ <!-- end enums -->
+
+ <!-- end HasExtensions -->
+
+ <!-- end services -->
+
+
+
+<a name="resource/definitions/containers/containers.proto"></a>
+<p align="right"><a href="#top">Top</a></p>
+
+## resource/definitions/containers/containers.proto
+
+
+
+<a name="talos.resource.definitions.containers.ContainerDependsOnSpec"></a>
+
+### ContainerDependsOnSpec
+ContainerDependsOnSpec is the resolved dependency set.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| paths | [string](#string) | repeated |  |
+| networks | [string](#string) | repeated |  |
+| time | [bool](#bool) |  |  |
+| containers | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ContainerImageStatusSpec"></a>
+
+### ContainerImageStatusSpec
+ContainerImageStatusSpec is the spec for ContainerImageStatus.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| phase | [talos.resource.definitions.enums.ContainersContainerImagePhase](#talos.resource.definitions.enums.ContainersContainerImagePhase) |  |  |
+| image | [string](#string) |  | Image is the reference that was requested, in canonical form. |
+| digest | [string](#string) |  | Digest is the resolved digest, set once the pull completes. |
+| progress | [string](#string) |  | Progress is a human-readable pull progress line, e.g. "12 MiB / 40 MiB". |
+| error | [string](#string) |  | Error is the last pull failure, verbatim. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ContainerInstanceSpecSpec"></a>
+
+### ContainerInstanceSpecSpec
+ContainerInstanceSpecSpec is the spec for ContainerInstanceSpec.
+
+It carries a resolved snapshot of everything needed to run one execution, so the runtime
+controller never has to re-read the container spec, image status or mount status. That keeps the
+execution independent of later changes to those inputs: a spec change destroys this instance
+rather than mutating it.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| container_id | [string](#string) |  | ContainerID is the name of the owning container, i.e. the ContainerSpec ID. |
+| generation | [uint64](#uint64) |  | Generation is this instance's sequence number for that container. |
+| image | [string](#string) |  | Image is the digest-resolved reference to run. |
+| entrypoint | [string](#string) | repeated |  |
+| args | [string](#string) | repeated |  |
+| working_dir | [string](#string) |  |  |
+| user | [string](#string) |  |  |
+| environment | [string](#string) | repeated |  |
+| mounts | [ResolvedMountSpec](#talos.resource.definitions.containers.ResolvedMountSpec) | repeated | Mounts are fully resolved, with host source paths filled in. |
+| security | [ContainerSecuritySpec](#talos.resource.definitions.containers.ContainerSecuritySpec) |  |  |
+| network | [ContainerNetworkSpec](#talos.resource.definitions.containers.ContainerNetworkSpec) |  |  |
+| resources | [ContainerResourcesSpec](#talos.resource.definitions.containers.ContainerResourcesSpec) |  |  |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ContainerInstanceStatusSpec"></a>
+
+### ContainerInstanceStatusSpec
+ContainerInstanceStatusSpec is the spec for ContainerInstanceStatus.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| container_id | [string](#string) |  | ContainerID is the name of the owning container. |
+| generation | [uint64](#uint64) |  | Generation is this instance's sequence number. |
+| phase | [talos.resource.definitions.enums.ContainersContainerInstancePhase](#talos.resource.definitions.enums.ContainersContainerInstancePhase) |  |  |
+| pid | [uint32](#uint32) |  | PID of the task; zero unless running. |
+| exit_code | [int32](#int32) |  | ExitCode is meaningful once Phase is terminated. |
+| error | [string](#string) |  | Error is the failure that ended this instance, verbatim. |
+| started_at | [google.protobuf.Timestamp](#google.protobuf.Timestamp) |  | StartedAt is when the task started; zero if it never did. |
+| finished_at | [google.protobuf.Timestamp](#google.protobuf.Timestamp) |  | FinishedAt is when the task exited; zero while running. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ContainerMountSpec"></a>
+
+### ContainerMountSpec
+ContainerMountSpec is a resolved mount.
+
+Exactly one of VolumeID, Tmpfs or HostPath describes the source; Kind says which.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [string](#string) |  | Kind is one of "userVolume", "tmpfs" or "hostPath". |
+| volume_id | [string](#string) |  | VolumeID is the block volume ID for a userVolume mount, e.g. "u-web-content". |
+| source | [string](#string) |  | Source is the host path for a hostPath mount. |
+| destination | [string](#string) |  | Destination inside the container. |
+| size | [uint64](#uint64) |  | Size of a tmpfs mount, in bytes; zero means the kernel default. |
+| options | [string](#string) | repeated | Options with the read-only default already applied. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ContainerMountStatusSpec"></a>
+
+### ContainerMountStatusSpec
+ContainerMountStatusSpec is the spec for ContainerMountStatus.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| ready | [bool](#bool) |  | Ready is true once every mount the container needs is available. |
+| mounts | [ResolvedMountSpec](#talos.resource.definitions.containers.ResolvedMountSpec) | repeated | Mounts are the resolved mounts, with host source paths filled in. |
+| error | [string](#string) |  | Error is the last mount failure, verbatim. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ContainerNetworkSpec"></a>
+
+### ContainerNetworkSpec
+ContainerNetworkSpec is the resolved network configuration.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| host_network | [bool](#bool) |  | HostNetwork shares the host network namespace instead of creating an empty one. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ContainerResourcesSpec"></a>
+
+### ContainerResourcesSpec
+ContainerResourcesSpec is the resolved cgroup configuration, in bytes and millicores.
+
+Zero means unset, which for a limit means unlimited.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| memory_limit | [uint64](#uint64) |  |  |
+| cpu_limit | [uint64](#uint64) |  |  |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ContainerSecuritySpec"></a>
+
+### ContainerSecuritySpec
+ContainerSecuritySpec is the resolved security posture.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| privileged | [bool](#bool) |  | Privileged grants all grantable capabilities and all devices, matching what extension services get implicitly. |
+| capabilities_add | [string](#string) | repeated |  |
+| capabilities_drop | [string](#string) | repeated |  |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ContainerSpecSpec"></a>
+
+### ContainerSpecSpec
+ContainerSpecSpec is the spec for ContainerSpec.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| image | [string](#string) |  | Image is the OCI reference in canonical form, already normalized by ContainerConfigController. |
+| entrypoint | [string](#string) | repeated |  |
+| args | [string](#string) | repeated |  |
+| working_dir | [string](#string) |  |  |
+| user | [string](#string) |  |  |
+| environment | [string](#string) | repeated |  |
+| mounts | [ContainerMountSpec](#talos.resource.definitions.containers.ContainerMountSpec) | repeated |  |
+| security | [ContainerSecuritySpec](#talos.resource.definitions.containers.ContainerSecuritySpec) |  |  |
+| network | [ContainerNetworkSpec](#talos.resource.definitions.containers.ContainerNetworkSpec) |  |  |
+| resources | [ContainerResourcesSpec](#talos.resource.definitions.containers.ContainerResourcesSpec) |  |  |
+| depends_on | [ContainerDependsOnSpec](#talos.resource.definitions.containers.ContainerDependsOnSpec) |  |  |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ContainerStatusSpec"></a>
+
+### ContainerStatusSpec
+ContainerStatusSpec is the spec for ContainerStatus.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| state | [talos.resource.definitions.enums.ContainersContainerState](#talos.resource.definitions.enums.ContainersContainerState) |  | State is the fine-grained lifecycle position, derived from the newest instance. |
+| health | [talos.resource.definitions.enums.ContainersContainerHealth](#talos.resource.definitions.enums.ContainersContainerHealth) |  | Health is the coarse summary of State, kept stable across internal changes. |
+| image | [string](#string) |  | Image is the resolved digest once the pull completes, otherwise the requested reference. |
+| pid | [uint32](#uint32) |  | PID of the running task; zero when not running. |
+| exit_code | [int32](#int32) |  | ExitCode of the last task exit. |
+| restart_count | [uint64](#uint64) |  | RestartCount is the current instance generation, i.e. restarts beyond the first start. |
+| error | [string](#string) |  | Error is the last failure, verbatim, from whichever stage produced it. |
+| waiting_for | [string](#string) | repeated | WaitingFor lists the unmet dependsOn entries while State is pending. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.ResolvedMountSpec"></a>
+
+### ResolvedMountSpec
+ResolvedMountSpec is a mount with its host-side source resolved.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| kind | [string](#string) |  |  |
+| source | [string](#string) |  | Source is the host path to bind from; empty for tmpfs. |
+| destination | [string](#string) |  |  |
+| size | [uint64](#uint64) |  |  |
+| options | [string](#string) | repeated |  |
 
 
 

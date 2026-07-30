@@ -66,6 +66,7 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	metamachinery "github.com/siderolabs/talos/pkg/machinery/meta"
 	blockres "github.com/siderolabs/talos/pkg/machinery/resources/block"
+	containersres "github.com/siderolabs/talos/pkg/machinery/resources/containers"
 	crires "github.com/siderolabs/talos/pkg/machinery/resources/cri"
 	resourcefiles "github.com/siderolabs/talos/pkg/machinery/resources/files"
 	"github.com/siderolabs/talos/pkg/machinery/resources/k8s"
@@ -1881,6 +1882,43 @@ func WaitForCARoots(runtime.Sequence, any) (runtime.TaskExecutionFunc, string) {
 			}
 		}
 	}, "waitForCARoots"
+}
+
+// TeardownContainerLifecycle stops Talos-managed containers gracefully.
+//
+// This runs before stopServices, which stops the CRI containerd together with everything depending
+// on it. By the time the volumeFinalize phase offers its own window, containerd is already gone, so
+// containers need a barrier of their own, torn down earlier.
+//
+// Both the runtime and mount controllers hold finalizers here; COSI finalizers are a set, so waiting
+// for the set to empty waits for both.
+func TeardownContainerLifecycle(runtime.Sequence, any) (runtime.TaskExecutionFunc, string) {
+	return func(ctx context.Context, logger *log.Logger, r runtime.Runtime) error {
+		// Bounded: a container that ignores SIGTERM gets SIGKILLed after the graceful period, so this
+		// only needs to cover a handful of containers stopping in sequence.
+		ctx, cancel := context.WithTimeout(ctx, time.Minute)
+		defer cancel()
+
+		containerLifecycle := containersres.NewContainerLifecycle(containersres.NamespaceName, containersres.ContainerLifecycleID).Metadata()
+
+		_, err := r.State().V1Alpha2().Resources().Teardown(ctx, containerLifecycle)
+		if err != nil {
+			if state.IsNotFoundError(err) {
+				return nil
+			}
+
+			return err
+		}
+
+		logger.Printf("waiting for containers to stop")
+
+		_, err = r.State().V1Alpha2().Resources().WatchFor(ctx, containerLifecycle, state.WithFinalizerEmpty())
+		if err != nil {
+			return err
+		}
+
+		return r.State().V1Alpha2().Resources().Destroy(ctx, containerLifecycle)
+	}, "teardownContainerLifecycle"
 }
 
 // TeardownVolumeLifecycle tears down volume lifecycle resource.

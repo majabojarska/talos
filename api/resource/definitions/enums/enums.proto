@@ -818,6 +818,55 @@ enum StorageMDMetadata {
   MD_METADATA12 = 1;
 }
 
+// ContainersContainerState describes where a container is in its lifecycle.
+//
+// This is the fine-grained view, derived from the newest instance. It is deliberately more detailed
+// than ContainerHealth so that "waiting to retry" and "still setting up" can be told apart while
+// the coarse health value stays a stable contract.
+//
+// There is no terminal state: containers restart unconditionally, so a failing container cycles
+// between backoff and pulling indefinitely. The only way out of the cycle is stopping, and that is
+// always driven from outside, by a changed document, a removed document, or the node shutting down.
+enum ContainersContainerState {
+  CONTAINER_STATE_PENDING = 0;
+  CONTAINER_STATE_PULLING = 1;
+  CONTAINER_STATE_STARTING = 2;
+  CONTAINER_STATE_RUNNING = 3;
+  CONTAINER_STATE_EXITED = 4;
+  CONTAINER_STATE_BACKOFF = 5;
+  CONTAINER_STATE_STOPPING = 6;
+}
+
+// ContainersContainerHealth is the coarse answer to "should I be looking at this container?".
+enum ContainersContainerHealth {
+  CONTAINER_HEALTH_PENDING = 0;
+  CONTAINER_HEALTH_PULLING = 1;
+  CONTAINER_HEALTH_HEALTHY = 2;
+  CONTAINER_HEALTH_DEGRADED = 3;
+}
+
+// ContainersContainerImagePhase describes the state of a container's image pull.
+enum ContainersContainerImagePhase {
+  CONTAINER_IMAGE_PHASE_PENDING = 0;
+  CONTAINER_IMAGE_PHASE_PULLING = 1;
+  CONTAINER_IMAGE_PHASE_READY = 2;
+  CONTAINER_IMAGE_PHASE_FAILED = 3;
+}
+
+// ContainersContainerInstancePhase describes the state of a single container execution.
+enum ContainersContainerInstancePhase {
+  // ContainerInstancePhaseCreated means the instance exists but the task has not started yet.
+  CONTAINER_INSTANCE_PHASE_CREATED = 0;
+  // ContainerInstancePhaseRunning means the task is running.
+  CONTAINER_INSTANCE_PHASE_RUNNING = 1;
+  // ContainerInstancePhaseTerminated means the task exited, for any reason. The exit code and
+  // error carry the detail; the instance controller decides what happens next.
+  CONTAINER_INSTANCE_PHASE_TERMINATED = 2;
+  // ContainerInstancePhaseFailed means setup failed before the task ever started, e.g. the
+  // cgroup or container could not be created.
+  CONTAINER_INSTANCE_PHASE_FAILED = 3;
+}
+
 // CriImageCacheStatus describes image cache status type.
 enum CriImageCacheStatus {
   IMAGE_CACHE_STATUS_UNKNOWN = 0;

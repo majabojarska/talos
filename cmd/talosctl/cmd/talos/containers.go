@@ -23,8 +23,30 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 )
 
+// resolveContainerNamespace maps the -k / --namespace flags onto a containerd namespace and driver.
+//
+// The CRI driver only exists for Kubernetes pods; everything else, including the taloscontainers
+// namespace, is read through the containerd driver. The server picks the right socket from the
+// namespace, so no extra plumbing is needed there.
+func resolveContainerNamespace(kubernetes bool, namespace string) (string, common.ContainerDriver, error) {
+	switch {
+	case kubernetes && namespace != "":
+		return "", 0, errors.New("--kubernetes and --namespace are mutually exclusive")
+	case kubernetes:
+		return constants.K8sContainerdNamespace, common.ContainerDriver_CRI, nil
+	case namespace == constants.K8sContainerdNamespace:
+		return namespace, common.ContainerDriver_CRI, nil
+	case namespace != "":
+		return namespace, common.ContainerDriver_CONTAINERD, nil
+	default:
+		return constants.SystemContainerdNamespace, common.ContainerDriver_CONTAINERD, nil
+	}
+}
+
 var containersCmdFlags struct {
 	kubernetesNamespaceFlag
+
+	namespace string
 }
 
 // containersCmd represents the processes command.
@@ -44,17 +66,9 @@ var containersCmd = &cobra.Command{
 
 		defer clientFactory.Close() //nolint:errcheck
 
-		var (
-			namespace string
-			driver    common.ContainerDriver
-		)
-
-		if containersCmdFlags.kubernetes {
-			namespace = constants.K8sContainerdNamespace
-			driver = common.ContainerDriver_CRI
-		} else {
-			namespace = constants.SystemContainerdNamespace
-			driver = common.ContainerDriver_CONTAINERD
+		namespace, driver, err := resolveContainerNamespace(containersCmdFlags.kubernetes, containersCmdFlags.namespace)
+		if err != nil {
+			return err
 		}
 
 		responseChan := multiplex.UnaryViaFactory(
@@ -111,6 +125,7 @@ var containersCmd = &cobra.Command{
 
 func init() {
 	containersCmd.Flags().BoolVarP(&containersCmdFlags.kubernetes, "kubernetes", "k", false, "use the k8s.io containerd namespace")
+	containersCmd.Flags().StringVar(&containersCmdFlags.namespace, "namespace", "", "containerd namespace to use (e.g. taloscontainers)")
 
 	containersCmd.Flags().Bool("use-cri", false, "use the CRI driver")
 	containersCmd.Flags().MarkHidden("use-cri") //nolint:errcheck

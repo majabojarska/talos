@@ -23,6 +23,7 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	"github.com/siderolabs/talos/pkg/machinery/fipsmode"
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
+	"github.com/siderolabs/talos/pkg/machinery/resources/containers"
 )
 
 // LogMode prints the current mode.
@@ -65,6 +66,19 @@ func SetupSystemDirectories(ctx context.Context, log *zap.Logger, rt runtime.Run
 func InitVolumeLifecycle(ctx context.Context, log *zap.Logger, rt runtime.Runtime, next NextTaskFunc) error {
 	if err := rt.State().V1Alpha2().Resources().Create(ctx, block.NewVolumeLifecycle(block.NamespaceName, block.VolumeLifecycleID)); err != nil {
 		return fmt.Errorf("initVolumeLifecycle: %w", err)
+	}
+
+	return next()(ctx, log, rt, next)
+}
+
+// InitContainerLifecycle initializes the container lifecycle resource.
+//
+// The resource carries no data: the finalizer set is the payload. Controllers which must stop
+// something before containerd goes away hold a finalizer on it, and the stopContainers phase tears
+// it down and waits for those finalizers to clear.
+func InitContainerLifecycle(ctx context.Context, log *zap.Logger, rt runtime.Runtime, next NextTaskFunc) error {
+	if err := rt.State().V1Alpha2().Resources().Create(ctx, containers.NewContainerLifecycle(containers.NamespaceName, containers.ContainerLifecycleID)); err != nil {
+		return fmt.Errorf("initContainerLifecycle: %w", err)
 	}
 
 	return next()(ctx, log, rt, next)

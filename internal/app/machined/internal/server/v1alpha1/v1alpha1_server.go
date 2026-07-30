@@ -95,6 +95,7 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/meta"
 	"github.com/siderolabs/talos/pkg/machinery/nethelpers"
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
+	containersres "github.com/siderolabs/talos/pkg/machinery/resources/containers"
 	crires "github.com/siderolabs/talos/pkg/machinery/resources/cri"
 	etcdresource "github.com/siderolabs/talos/pkg/machinery/resources/etcd"
 	"github.com/siderolabs/talos/pkg/machinery/resources/network"
@@ -1317,21 +1318,34 @@ func (s *Server) Logs(req *machine.LogsRequest, l machine.MachineService_LogsSer
 	var chunk chunker.Chunker
 
 	switch {
-	case req.Namespace == constants.SystemContainerdNamespace || req.Id == "kubelet":
-		var options []runtime.LogOption
+	case req.Namespace == constants.TalosContainersNamespace:
+		// Containers declared via ContainerConfig write to the same in-memory circular buffers as
+		// Talos services, under a prefixed identifier. Reading from there rather than from the
+		// runtime is what makes a stopped container's output still available, and it is the only
+		// option anyway: nothing writes these logs to disk.
+		id := req.Id
 
-		if req.Follow {
-			options = append(options, runtime.WithFollow())
-		}
-
-		if req.TailLines >= 0 {
-			options = append(options, runtime.WithTailLines(int(req.TailLines)))
+		if !strings.HasPrefix(id, constants.TalosContainersLogPrefix) {
+			// The prefix only exists to keep the keyspace collision-free, so the container name is
+			// what callers pass. The prefixed form is accepted too, since that is what the
+			// LogsContainers listing reports.
+			id = constants.TalosContainersLogPrefix + id
 		}
 
 		var logR io.ReadCloser
 
-		logR, err = s.Controller.Runtime().Logging().ServiceLog(req.Id).Reader(options...)
-		if err != nil {
+		if logR, err = s.inMemoryLogs(id, req); err != nil {
+			return s.containerLogsError(l.Context(), req.Id, err)
+		}
+
+		//nolint:errcheck
+		defer logR.Close()
+
+		chunk = stream.NewChunker(l.Context(), logR)
+	case req.Namespace == constants.SystemContainerdNamespace || req.Id == "kubelet":
+		var logR io.ReadCloser
+
+		if logR, err = s.inMemoryLogs(req.Id, req); err != nil {
 			return err
 		}
 
@@ -1356,6 +1370,46 @@ func (s *Server) Logs(req *machine.LogsRequest, l machine.MachineService_LogsSer
 	}
 
 	return nil
+}
+
+// containerLogsError explains an unreadable container log in terms of the container.
+//
+// A buffer is only created once something writes to it, so "log was not registered" covers two
+// situations the operator has to tell apart: a name that was never declared, and a declared container
+// which has not produced output yet. All three cases stay NotFound, since the log really is absent;
+// the text is what carries the diagnosis.
+func (s *Server) containerLogsError(ctx context.Context, name string, cause error) error {
+	resourceState := s.Controller.Runtime().State().V1Alpha2().Resources()
+
+	containerStatus, err := safe.StateGetByID[*containersres.ContainerStatus](ctx, resourceState, name)
+
+	switch {
+	case err == nil:
+		return status.Errorf(codes.NotFound, "container %q has not produced any output yet (state: %s)",
+			name, containerStatus.TypedSpec().State)
+	case state.IsNotFoundError(err):
+		// Also covers the brief window after a document is applied but before the status controller
+		// has projected a status for it, which is why this points at a command rather than asserting
+		// the container does not exist.
+		return status.Errorf(codes.NotFound, "no container %q is declared; see `talosctl get containerstatus`", name)
+	default:
+		return status.Errorf(codes.NotFound, "no logs for container %q: %s", name, cause)
+	}
+}
+
+// inMemoryLogs opens a reader over the in-memory circular log buffer registered under id.
+func (s *Server) inMemoryLogs(id string, req *machine.LogsRequest) (io.ReadCloser, error) {
+	var options []runtime.LogOption
+
+	if req.Follow {
+		options = append(options, runtime.WithFollow())
+	}
+
+	if req.TailLines >= 0 {
+		options = append(options, runtime.WithTailLines(int(req.TailLines)))
+	}
+
+	return s.Controller.Runtime().Logging().ServiceLog(id).Reader(options...)
 }
 
 // LogsContainers provide a list of registered log containers.

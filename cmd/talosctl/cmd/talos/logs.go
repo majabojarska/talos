@@ -11,13 +11,13 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/siderolabs/gen/xslices"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc/codes"
 
 	"github.com/siderolabs/talos/cmd/talosctl/pkg/talos/global"
-	"github.com/siderolabs/talos/pkg/machinery/api/common"
 	"github.com/siderolabs/talos/pkg/machinery/api/machine"
 	"github.com/siderolabs/talos/pkg/machinery/client"
 	"github.com/siderolabs/talos/pkg/machinery/client/multiplex"
@@ -28,18 +28,31 @@ var logsCmdFlags struct {
 	global.InsecureFlags
 	kubernetesNamespaceFlag
 
-	follow bool
-	tail   int32
+	namespace string
+	follow    bool
+	tail      int32
 }
 
 var logsCmd = &cobra.Command{
 	Use:   "logs <service name>",
 	Short: "Retrieve logs for a service",
-	Long:  ``,
-	Args:  cobra.ExactArgs(1),
+	Long: `Retrieve logs for a Talos service or a container.
+
+With no flags the argument names a Talos service.
+
+With -k it names a Kubernetes container, whose logs are read from disk.
+
+With --namespace ` + constants.TalosContainersNamespace + ` it names a container declared via a
+ContainerConfig document. Those logs come from an in-memory buffer which outlives the container, so
+they stay readable after it exits, and successive restarts append to one buffer.`,
+	Args: cobra.ExactArgs(1),
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if len(args) != 0 {
 			return nil, cobra.ShellCompDirectiveError | cobra.ShellCompDirectiveNoFileComp
+		}
+
+		if logsCmdFlags.namespace == constants.TalosContainersNamespace {
+			return getTalosContainerLogs(cmd.Context(), &logsCmdFlags), cobra.ShellCompDirectiveNoFileComp
 		}
 
 		if logsCmdFlags.kubernetes {
@@ -62,17 +75,9 @@ var logsCmd = &cobra.Command{
 
 		defer clientFactory.Close() //nolint:errcheck
 
-		var (
-			namespace string
-			driver    common.ContainerDriver
-		)
-
-		if logsCmdFlags.kubernetes {
-			namespace = constants.K8sContainerdNamespace
-			driver = common.ContainerDriver_CRI
-		} else {
-			namespace = constants.SystemContainerdNamespace
-			driver = common.ContainerDriver_CONTAINERD
+		namespace, driver, err := resolveContainerNamespace(logsCmdFlags.kubernetes, logsCmdFlags.namespace)
+		if err != nil {
+			return err
 		}
 
 		responseChan := multiplex.StreamingViaFactory(
@@ -170,8 +175,26 @@ func getLogsContainers(ctx context.Context, flags any) []string {
 	return result
 }
 
+// getTalosContainerLogs suggests the containers declared via ContainerConfig which have logs.
+//
+// The registered identifiers carry the namespace prefix, but the command takes the container name,
+// so the prefix is stripped back off. Containers that never started have no buffer and so do not
+// appear.
+func getTalosContainerLogs(ctx context.Context, flags any) []string {
+	var result []string
+
+	for _, id := range getLogsContainers(ctx, flags) {
+		if name, ok := strings.CutPrefix(id, constants.TalosContainersLogPrefix); ok {
+			result = append(result, name)
+		}
+	}
+
+	return result
+}
+
 func init() {
 	logsCmd.Flags().BoolVarP(&logsCmdFlags.kubernetes, "kubernetes", "k", false, "use the k8s.io containerd namespace")
+	logsCmd.Flags().StringVar(&logsCmdFlags.namespace, "namespace", "", "containerd namespace to use (e.g. taloscontainers)")
 	logsCmd.Flags().BoolVarP(&logsCmdFlags.follow, "follow", "f", false, "specify if the logs should be streamed")
 	logsCmd.Flags().Int32VarP(&logsCmdFlags.tail, "tail", "", -1, "lines of log file to display (default is to show from the beginning)")
 
