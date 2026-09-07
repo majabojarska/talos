@@ -1159,7 +1159,7 @@ func (EthernetConfigV1Alpha1) Doc() *encoder.Doc {
 			},
 			{
 				Name:        "wakeOnLan",
-				Type:        "[]WOLMode",
+				Type:        "WOLModeList",
 				Note:        "",
 				Description: "Wake-on-LAN modes to enable.\n\nIf this field is omitted, Wake-on-LAN configuration is not changed.\nAn empty list disables Wake-on-LAN.\n\nThis is similar to `ethtool -s <link> wol <options>` command.",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "Wake-on-LAN modes to enable." /* encoder.LineComment */, "" /* encoder.FootComment */},

@@ -542,7 +542,7 @@ type NetworkConfig struct {
 	// docgen:nodoc
 	//
 	// Deprecated: Use `ResolverConfig` instead.
-	Searches []string `yaml:"searchDomains,omitempty"`
+	Searches SearchDomainList `yaml:"searchDomains,omitempty" talos:"omitonlyifnil" merge:"replace"`
 	// docgen:nodoc
 	//
 	// Deprecated: Use `StaticHostConfig` instead.
@@ -555,6 +555,20 @@ type NetworkConfig struct {
 	//
 	// Deprecated: Use `ResolverConfig` instead.
 	NetworkDisableSearchDomain *bool `yaml:"disableSearchDomain,omitempty"`
+}
+
+// SearchDomainList is a list of DNS search domains.
+//
+// A nil list means that search domains are not configured (and are inherited from
+// other configuration layers), while an explicitly empty list clears search domains
+// obtained from DHCP or platform.
+//
+// docgen:nodoc
+type SearchDomainList []string
+
+// IsZero implements yaml.IsZeroer.
+func (l SearchDomainList) IsZero() bool {
+	return l == nil
 }
 
 // NetworkDeviceList is a list of *Device structures with overridden merge process.

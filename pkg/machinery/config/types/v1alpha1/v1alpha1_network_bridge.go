@@ -75,7 +75,7 @@ func (c *Config) SearchDomains() optional.Optional[[]string] {
 		return optional.None[[]string]()
 	}
 
-	return optional.Some(slices.Clone(c.MachineConfig.MachineNetwork.Searches))
+	return optional.Some([]string(slices.Clone(c.MachineConfig.MachineNetwork.Searches)))
 }
 
 // DisableSearchDomain implements config.NetworkResolverConfig interface.

@@ -194,6 +194,12 @@ func toYamlNode(in any, options *Options) (*yaml.Node, error) {
 					skip = true
 				}
 
+				// NOTE: "omitonlyifnil" only applies on this custom-walker path (used when
+				// comments are enabled). When CommentsDisabled, Encode() short-circuits to
+				// plain yaml.Marshal and this tag is never consulted. A field that must
+				// preserve an explicitly empty value on all encode paths needs a named type
+				// implementing yaml.IsZeroer (IsZero() returning true only for nil), not just
+				// this tag.
 				if part == "omitonlyifnil" && !null {
 					skip = false
 				}

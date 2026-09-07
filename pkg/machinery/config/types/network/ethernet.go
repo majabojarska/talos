@@ -93,7 +93,21 @@ type EthernetConfigV1Alpha1 struct {
 	//   examples:
 	//    - value: >
 	//       []nethelpers.WOLMode{nethelpers.WOLModeUnicast, nethelpers.WOLModeMagic}
-	WakeOnLANConfig []nethelpers.WOLMode `yaml:"wakeOnLan,omitempty"`
+	WakeOnLANConfig WOLModeList `yaml:"wakeOnLan,omitempty" talos:"omitonlyifnil" merge:"replace"`
+}
+
+// WOLModeList is a list of Wake-on-LAN modes.
+//
+// A nil list means that Wake-on-LAN configuration is left unchanged, while an
+// explicitly empty list disables Wake-on-LAN.
+type WOLModeList []nethelpers.WOLMode
+
+// IsZero implements yaml.IsZeroer.
+//
+// Only a nil list is considered zero, so that an explicitly empty list survives
+// encoding with the `omitempty` tag instead of being dropped.
+func (l WOLModeList) IsZero() bool {
+	return l == nil
 }
 
 // EthernetRingsConfig is a configuration for Ethernet link rings.
@@ -199,7 +213,7 @@ func (s *EthernetConfigV1Alpha1) Features() map[string]bool {
 
 // WakeOnLAN implements config.EthernetConfig interface.
 func (s *EthernetConfigV1Alpha1) WakeOnLAN() []nethelpers.WOLMode {
-	return s.WakeOnLANConfig
+	return []nethelpers.WOLMode(s.WakeOnLANConfig)
 }
 
 // Validate implements config.Validator interface.

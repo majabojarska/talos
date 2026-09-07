@@ -171,7 +171,7 @@ func (suite *ResolverConfigSuite) TestMachineConfigurationLegacy() {
 				MachineConfig: &v1alpha1.MachineConfig{
 					MachineNetwork: &v1alpha1.NetworkConfig{ //nolint:staticcheck // legacy config
 						NameServers: []string{"2.2.2.2", "3.3.3.3"},
-						Searches:    []string{"example.com", "example.org"},
+						Searches:    v1alpha1.SearchDomainList{"example.com", "example.org"},
 					},
 				},
 				ClusterConfig: &v1alpha1.ClusterConfig{

@@ -14,7 +14,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/siderolabs/talos/pkg/machinery/config/config"
+	"github.com/siderolabs/talos/pkg/machinery/config/configloader"
 	"github.com/siderolabs/talos/pkg/machinery/config/container"
+	"github.com/siderolabs/talos/pkg/machinery/config/encoder"
 	"github.com/siderolabs/talos/pkg/machinery/config/types/cri"
 	"github.com/siderolabs/talos/pkg/machinery/config/types/meta"
 	"github.com/siderolabs/talos/pkg/machinery/config/types/network"
@@ -263,7 +265,7 @@ func TestResolverBridging(t *testing.T) {
 					MachineConfig: &v1alpha1.MachineConfig{
 						MachineNetwork: &v1alpha1.NetworkConfig{
 							NameServers:                []string{"2.2.2.2", "3.3.3.3"},
-							Searches:                   []string{"universe.com", "galaxy.org"},
+							Searches:                   v1alpha1.SearchDomainList{"universe.com", "galaxy.org"},
 							NetworkDisableSearchDomain: new(true),
 						},
 					},
@@ -285,6 +287,23 @@ func TestResolverBridging(t *testing.T) {
 
 			expectedNameservers:   nil,
 			expectedSearchDomains: nil,
+			expectedDisableSearch: false,
+		},
+		{
+			name: "v1alpha1 explicitly empty search domains",
+
+			cfg: func(*testing.T) config.Config {
+				return container.NewV1Alpha1(&v1alpha1.Config{
+					MachineConfig: &v1alpha1.MachineConfig{
+						MachineNetwork: &v1alpha1.NetworkConfig{
+							Searches: v1alpha1.SearchDomainList{},
+						},
+					},
+				})
+			},
+
+			expectedNameservers:   nil,
+			expectedSearchDomains: []string{},
 			expectedDisableSearch: false,
 		},
 		{
@@ -810,4 +829,38 @@ func TestImageCacheConfigBridging(t *testing.T) {
 			assert.Equal(t, test.expectedImageCacheEnabled, imageCacheConfig.LocalEnabled())
 		})
 	}
+}
+
+// TestSearchDomainsEmptyRoundTrip asserts that an explicitly empty `searchDomains: []`
+// survives an encode/decode round-trip on the legacy v1alpha1 document, mirroring the
+// behavior required of the new-style `ResolverConfig.searchDomains.domains`.
+func TestSearchDomainsEmptyRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	cfg := &v1alpha1.Config{
+		ConfigVersion: "v1alpha1",
+		MachineConfig: &v1alpha1.MachineConfig{
+			MachineNetwork: &v1alpha1.NetworkConfig{
+				Searches: v1alpha1.SearchDomainList{},
+			},
+		},
+	}
+
+	marshaled, err := encoder.NewEncoder(cfg, encoder.WithComments(encoder.CommentsDisabled)).Encode()
+	require.NoError(t, err)
+
+	t.Log(string(marshaled))
+
+	assert.Contains(t, string(marshaled), "searchDomains: []")
+
+	provider, err := configloader.NewFromBytes(marshaled)
+	require.NoError(t, err)
+
+	decoded := provider.RawV1Alpha1() //nolint:staticcheck
+	require.NotNil(t, decoded)
+
+	require.NotNil(t, decoded.MachineConfig)
+	require.NotNil(t, decoded.MachineConfig.MachineNetwork)
+	assert.NotNil(t, decoded.MachineConfig.MachineNetwork.Searches)
+	assert.Empty(t, decoded.MachineConfig.MachineNetwork.Searches)
 }
