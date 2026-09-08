@@ -160,7 +160,7 @@ func TestContainerMountValidate(t *testing.T) {
 		{
 			name:        "no source set",
 			mount:       container.ContainerMount{},
-			expectedErr: "exactly one of userVolume, tmpfs or hostPath must be set",
+			expectedErr: "exactly one of userVolume, tmpfs, hostPath or textFiles must be set",
 		},
 		{
 			name: "two sources set",
@@ -168,7 +168,7 @@ func TestContainerMountValidate(t *testing.T) {
 				TmpfsMount:    &container.TmpfsMount{MountDestination: "/tmp"},
 				HostPathMount: &container.HostPathMount{MountSource: "/dev", MountDestination: "/dev"},
 			},
-			expectedErr: "exactly one of userVolume, tmpfs or hostPath must be set",
+			expectedErr: "exactly one of userVolume, tmpfs, hostPath or textFiles must be set",
 		},
 		{
 			name: "three sources set",
@@ -177,7 +177,7 @@ func TestContainerMountValidate(t *testing.T) {
 				TmpfsMount:      &container.TmpfsMount{MountDestination: "/tmp"},
 				HostPathMount:   &container.HostPathMount{MountSource: "/dev", MountDestination: "/dev"},
 			},
-			expectedErr: "exactly one of userVolume, tmpfs or hostPath must be set",
+			expectedErr: "exactly one of userVolume, tmpfs, hostPath or textFiles must be set",
 		},
 		{
 			name: "valid userVolume",
@@ -396,4 +396,126 @@ func TestHostPathMountValidate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTextFilesMountValidate(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name        string
+		mount       container.TextFilesMount
+		expectedErr string
+	}{
+		{
+			name: "valid",
+			mount: container.TextFilesMount{
+				SourceName:       "my-configs",
+				MountDestination: "/etc/foobar",
+			},
+		},
+		{
+			name: "missing name",
+			mount: container.TextFilesMount{
+				MountDestination: "/etc/foobar",
+			},
+			expectedErr: "textFiles.name is required",
+		},
+		{
+			name: "invalid name",
+			mount: container.TextFilesMount{
+				SourceName:       "My_Configs",
+				MountDestination: "/etc/foobar",
+			},
+			expectedErr: "name can only contain lowercase ASCII letters, digits and hyphens",
+		},
+		{
+			name: "relative destination",
+			mount: container.TextFilesMount{
+				SourceName:       "my-configs",
+				MountDestination: "etc/foobar",
+			},
+			expectedErr: "textFiles.destination",
+		},
+		{
+			name: "rw is rejected",
+			mount: container.TextFilesMount{
+				SourceName:       "my-configs",
+				MountDestination: "/etc/foobar",
+				MountOpts:        []string{"rw"},
+			},
+			expectedErr: "textFiles mounts are read-only",
+		},
+		{
+			name: "unsupported mount option",
+			mount: container.TextFilesMount{
+				SourceName:       "my-configs",
+				MountDestination: "/etc/foobar",
+				MountOpts:        []string{"sync"},
+			},
+			expectedErr: `unsupported mount option "sync"`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			err := test.mount.Validate()
+
+			if test.expectedErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), test.expectedErr)
+			}
+		})
+	}
+}
+
+func TestTextFilesMountOptions(t *testing.T) {
+	t.Parallel()
+
+	// No options at all gets the hardened read-only default.
+	mount := container.TextFilesMount{SourceName: "my-configs", MountDestination: "/etc/foobar"}
+	assert.Equal(t, []string{"ro", "nosuid", "nodev", "noexec"}, mount.MountOptions())
+
+	// Naming any option opts out of the hardening defaults, but never out of read-only.
+	mount.MountOpts = []string{"noatime"}
+	assert.Equal(t, []string{"noatime", "ro"}, mount.MountOptions())
+
+	// An explicit ro is not duplicated.
+	mount.MountOpts = []string{"ro", "noexec"}
+	assert.Equal(t, []string{"ro", "noexec"}, mount.MountOptions())
+
+	// MountOptions must not mutate the document it was called on.
+	mount.MountOpts = []string{"noexec"}
+	_ = mount.MountOptions()
+	assert.Equal(t, []string{"noexec"}, mount.MountOpts)
+}
+
+func TestContainerMountTextFilesSource(t *testing.T) {
+	t.Parallel()
+
+	mount := container.ContainerMount{
+		TextFilesMount: &container.TextFilesMount{
+			SourceName:       "my-configs",
+			MountDestination: "/etc/foobar",
+		},
+	}
+
+	destination, err := mount.Validate()
+	require.NoError(t, err)
+	assert.Equal(t, "/etc/foobar", destination)
+
+	textFiles, present := mount.TextFiles().Get()
+	require.True(t, present)
+	assert.Equal(t, "my-configs", textFiles.Name())
+
+	assert.False(t, mount.UserVolume().IsPresent())
+	assert.False(t, mount.Tmpfs().IsPresent())
+	assert.False(t, mount.HostPath().IsPresent())
+
+	// Still exactly-one-of with four sources in play.
+	mount.TmpfsMount = &container.TmpfsMount{MountDestination: "/tmp"}
+	_, err = mount.Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exactly one of userVolume, tmpfs, hostPath or textFiles must be set")
 }

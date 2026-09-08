@@ -192,9 +192,6 @@ func applyConfig(containerSpecSpec *containers.ContainerSpecSpec, containerConfi
 }
 
 // resolveMounts turns typed configuration mounts into resolved mount specs.
-//
-// A user volume is resolved to its block volume ID here rather than to a host path: the path is
-// only known once the volume is actually mounted, which is ContainerMountController's job.
 func resolveMounts(configMounts []configcfg.ContainerMountConfig) ([]containers.ContainerMountSpec, error) {
 	if len(configMounts) == 0 {
 		return nil, nil
@@ -242,6 +239,15 @@ func resolveMounts(configMounts []configcfg.ContainerMountConfig) ([]containers.
 				Source:      hostPath.Source(),
 				Destination: hostPath.Destination(),
 				Options:     hostPath.MountOptions(),
+			})
+		case containerMountConfig.TextFiles().IsPresent():
+			textFiles, _ := containerMountConfig.TextFiles().Get()
+
+			containerMountSpecs = append(containerMountSpecs, containers.ContainerMountSpec{
+				Kind:          containers.MountKindTextFiles,
+				TextFilesName: textFiles.Name(),
+				Destination:   textFiles.Destination(),
+				Options:       textFiles.MountOptions(),
 			})
 		default:
 			return nil, fmt.Errorf("mounts[%d]: no mount source set", i)

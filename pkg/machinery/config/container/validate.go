@@ -272,6 +272,12 @@ func (container *Container) validateContainer(mode validation.RuntimeMode) ([]st
 		errs = multierror.Append(errs, err)
 	}
 
+	// Same reasoning for textFiles mounts: the referenced document lives in a sibling document, so
+	// only a container-level check can see it.
+	if err := validateContainerTextFilesReferences(container.ContainerConfigs(), container.TextFilesConfigs()); err != nil {
+		errs = multierror.Append(errs, err)
+	}
+
 	// KubeSpan requires a cluster identity, provided either by the deprecated .cluster.id/.cluster.secret
 	// or by a DiscoveryIdentityConfig document. The identity may live in a separate document, so this
 	// cross-document check is done at the container level.

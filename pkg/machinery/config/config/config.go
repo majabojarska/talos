@@ -68,6 +68,7 @@ type Config interface { //nolint:interfacebloat
 
 	// - containers:
 	ContainerConfigs() []ContainerConfig
+	TextFilesConfigs() []TextFilesConfig
 
 	// - block devices/storage:
 	Volumes() VolumesConfig
