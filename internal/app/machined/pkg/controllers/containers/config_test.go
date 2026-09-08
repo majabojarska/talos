@@ -133,6 +133,33 @@ func (suite *ConfigSuite) TestResolvesMounts() {
 	})
 }
 
+func (suite *ConfigSuite) TestResolvesTextFilesMount() {
+	doc := newDoc("director", "ghcr.io/siderolabs/director:v1.0.0")
+	doc.MountsConfig = []containercfg.ContainerMount{
+		{
+			TextFilesMount: &containercfg.TextFilesMount{
+				SourceName:       "director-configs",
+				MountDestination: "/etc/director",
+			},
+		},
+	}
+
+	suite.applyContainers(doc)
+
+	ctest.AssertResource(suite, "director", func(spec *containers.ContainerSpec, asrt *assert.Assertions) {
+		mounts := spec.TypedSpec().Mounts
+		asrt.Len(mounts, 1)
+
+		// Like a user volume, this stays a name: materializing the tree and resolving its path are
+		// other controllers' jobs, and the contents never enter this spec.
+		asrt.Equal(containers.MountKindTextFiles, mounts[0].Kind)
+		asrt.Equal("director-configs", mounts[0].TextFilesName)
+		asrt.Equal("/etc/director", mounts[0].Destination)
+		asrt.Empty(mounts[0].Source)
+		asrt.Equal([]string{"ro", "nosuid", "nodev", "noexec"}, mounts[0].Options)
+	})
+}
+
 func (suite *ConfigSuite) TestResolvesSecurityNetworkAndResources() {
 	doc := newDoc("director", "ghcr.io/siderolabs/director:v1.0.0")
 	doc.SecurityConfig = &containercfg.ContainerSecurity{

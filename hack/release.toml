@@ -74,6 +74,39 @@ The `--kubernetes`/`-k` flag is deprecated in favor of `--namespace cri`.
 `talosctl image list` also supports `--namespace taloscontainers`, to inspect images pulled for `ContainerConfig` containers. `talosctl debug` does not support the `taloscontainers` namespace.
 """
 
+    [notes.text_files_config]
+        title = "Text Files for Talos Containers"
+        description = """\
+A new `TextFilesConfig` document declares a named set of text files inline, keyed by a path relative to the set's root:
+
+```yaml
+apiVersion: v1alpha1
+kind: TextFilesConfig
+name: my-foobar-configs
+files:
+  foo.conf: |
+    [section-abc]
+    key1=val1
+  subdir/baz.ini: |
+    key1=val1
+```
+
+A `ContainerConfig` mounts it with the new `textFiles` mount source, at which point the paths are materialized as a real directory tree on the host and bind-mounted read-only at the destination; a key containing a slash becomes a real subdirectory:
+
+```yaml
+apiVersion: v1alpha1
+kind: ContainerConfig
+name: foobar
+image: foobar:1.2.3
+mounts:
+  - textFiles:
+      name: my-foobar-configs
+      destination: /etc/foobar/something
+```
+
+The tree is rebuilt from the machine configuration on every boot and is never written to persistent storage. Editing a file's content replaces the running container rather than changing what the running process reads. Contents are stored in the machine configuration verbatim, so treat them as being as sensitive as the machine configuration itself.
+"""
+
     [notes.extension_service_configuration]
         title = "Extension Service Configuration"
         description = """\

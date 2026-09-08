@@ -209,7 +209,8 @@ func (container *Container) runtimeValidateContainer(ctx context.Context, st sta
 //
 // This validation is used to do validation which only makes sense for the full configuration (vs. individual documents).
 //
-// The method returns warnings and fatal errors (as multierror).
+// Returns warnings alongside the fatal errors (as multierror), since some container-level checks
+// (e.g. textFiles tmpfs sizing) are advisory rather than fatal.
 //
 //nolint:gocyclo,cyclop
 func (container *Container) validateContainer(mode validation.RuntimeMode) ([]string, error) {
@@ -271,6 +272,16 @@ func (container *Container) validateContainer(mode validation.RuntimeMode) ([]st
 	if err := validateContainerDependencies(container.ContainerConfigs()); err != nil {
 		errs = multierror.Append(errs, err)
 	}
+
+	// Same reasoning for textFiles mounts: the referenced document lives in a sibling document, so
+	// only a container-level check can see it.
+	if err := validateContainerTextFilesReferences(container.ContainerConfigs(), container.TextFilesConfigs()); err != nil {
+		errs = multierror.Append(errs, err)
+	}
+
+	// The per-document Validate warns on a document's own size; only a container-level check can see
+	// how many containers actually mount it, which is what determines the real tmpfs cost.
+	warnings = append(warnings, validateContainerTextFilesSize(container.ContainerConfigs(), container.TextFilesConfigs())...)
 
 	// KubeSpan requires a cluster identity, provided either by the deprecated .cluster.id/.cluster.secret
 	// or by a DiscoveryIdentityConfig document. The identity may live in a separate document, so this

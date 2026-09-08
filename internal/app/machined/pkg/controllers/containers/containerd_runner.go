@@ -401,10 +401,11 @@ func MountsResolvedToOCI(mounts []containersres.ResolvedMountSpec) []specs.Mount
 				Destination: mount.Destination,
 				Options:     options,
 			})
-		// A user volume is a bind of the path the volume is mounted at: by the time a mount reaches
-		// here, MountController has resolved its source to that path, so the two kinds are the same
-		// operation and differ only in who decided the source.
-		case containersres.MountKindHostPath, containersres.MountKindUserVolume:
+		// A user volume is a bind of the path the volume is mounted at, and a text file set a bind of
+		// the tree materialized for it: by the time a mount reaches here, MountController has
+		// resolved its source to that path, so all three kinds are the same operation and differ
+		// only in who decided the source.
+		case containersres.MountKindHostPath, containersres.MountKindUserVolume, containersres.MountKindTextFiles:
 			out = append(out, specs.Mount{
 				Type:        "bind",
 				Source:      mount.Source,

@@ -46,8 +46,14 @@ type ContainerMount struct {
 	//     Bind-mount a path from the host.
 	//
 	//     The source must already exist; Talos will not create it. This is the widest of the
-	//     three sources and the only one that can reach arbitrary host state.
+	//     sources and the only one that can reach arbitrary host state.
 	HostPathMount *HostPathMount `yaml:"hostPath,omitempty"`
+	//   description: |
+	//     Mount a set of text files, referenced by the name of its `TextFilesConfig` document.
+	//
+	//     The document's contents are materialized as a directory tree on the host and
+	//     bind-mounted here. The mount is always read-only.
+	TextFilesMount *TextFilesMount `yaml:"textFiles,omitempty"`
 }
 
 // UserVolumeMount mounts a user volume by name.
@@ -102,6 +108,30 @@ type HostPathMount struct {
 	MountOpts []string `yaml:"options,omitempty"`
 }
 
+// TextFilesMount mounts a TextFilesConfig document's files.
+type TextFilesMount struct {
+	//   description: |
+	//     Name of the `TextFilesConfig` document to mount.
+	SourceName string `yaml:"name"`
+	//   description: |
+	//     Absolute path inside the container's mount namespace.
+	MountDestination string `yaml:"destination"`
+	//   description: |
+	//     Mount options.
+	//
+	//     Text file mounts are read-only: `ro` is always applied and `rw` is rejected. When no
+	//     options are given, `nosuid`, `nodev` and `noexec` are applied as well.
+	//   values:
+	//     - ro
+	//     - noexec
+	//     - nosuid
+	//     - nodev
+	//     - noatime
+	//     - rbind
+	//     - rshared
+	MountOpts []string `yaml:"options,omitempty"`
+}
+
 // Validate checks the mount and returns its destination.
 func (m *ContainerMount) Validate() (string, error) {
 	matchCount := 0
@@ -118,8 +148,12 @@ func (m *ContainerMount) Validate() (string, error) {
 		matchCount++
 	}
 
+	if m.TextFilesMount != nil {
+		matchCount++
+	}
+
 	if matchCount != 1 {
-		return "", errors.New("exactly one of userVolume, tmpfs or hostPath must be set")
+		return "", errors.New("exactly one of userVolume, tmpfs, hostPath or textFiles must be set")
 	}
 
 	var (
@@ -137,6 +171,9 @@ func (m *ContainerMount) Validate() (string, error) {
 	case m.HostPathMount != nil:
 		destination = m.HostPathMount.MountDestination
 		err = m.HostPathMount.Validate()
+	case m.TextFilesMount != nil:
+		destination = m.TextFilesMount.MountDestination
+		err = m.TextFilesMount.Validate()
 	}
 
 	return destination, err
@@ -159,6 +196,26 @@ func (m *UserVolumeMount) Validate() error {
 func (m *TmpfsMount) Validate() error {
 	return errors.Join(
 		ValidateAbsPath("tmpfs.destination", m.MountDestination),
+		ValidateMountOptions(m.MountOpts),
+	)
+}
+
+func (m *TextFilesMount) Validate() error {
+	var validationErrors error
+
+	if m.SourceName == "" {
+		validationErrors = errors.Join(validationErrors, errors.New("textFiles.name is required"))
+	} else if err := ValidateDocumentName(m.SourceName); err != nil {
+		validationErrors = errors.Join(validationErrors, fmt.Errorf("textFiles.%w", err))
+	}
+
+	if slices.Contains(m.MountOpts, "rw") {
+		validationErrors = errors.Join(validationErrors, errors.New("textFiles mounts are read-only, the rw option is not allowed"))
+	}
+
+	return errors.Join(
+		validationErrors,
+		ValidateAbsPath("textFiles.destination", m.MountDestination),
 		ValidateMountOptions(m.MountOpts),
 	)
 }
@@ -193,6 +250,7 @@ var (
 	_ config.ContainerUserVolumeMountConfig = &UserVolumeMount{}
 	_ config.ContainerTmpfsMountConfig      = &TmpfsMount{}
 	_ config.ContainerHostPathMountConfig   = &HostPathMount{}
+	_ config.ContainerTextFilesMountConfig  = &TextFilesMount{}
 )
 
 // UserVolume implements config.ContainerMountConfig interface.
@@ -222,6 +280,15 @@ func (m *ContainerMount) HostPath() optional.Optional[config.ContainerHostPathMo
 	return optional.Some[config.ContainerHostPathMountConfig](m.HostPathMount)
 }
 
+// TextFiles implements config.ContainerMountConfig interface.
+func (m *ContainerMount) TextFiles() optional.Optional[config.ContainerTextFilesMountConfig] {
+	if m.TextFilesMount == nil {
+		return optional.None[config.ContainerTextFilesMountConfig]()
+	}
+
+	return optional.Some[config.ContainerTextFilesMountConfig](m.TextFilesMount)
+}
+
 // Name implements config.ContainerUserVolumeMountConfig interface.
 func (m *UserVolumeMount) Name() string { return m.VolumeName }
 
@@ -248,6 +315,31 @@ func (m *HostPathMount) Destination() string { return m.MountDestination }
 
 // MountOptions implements config.ContainerHostPathMountConfig interface.
 func (m *HostPathMount) MountOptions() []string { return normalizeWritableOptions(m.MountOpts) }
+
+// Name implements config.ContainerTextFilesMountConfig interface.
+func (m *TextFilesMount) Name() string { return m.SourceName }
+
+// Destination implements config.ContainerTextFilesMountConfig interface.
+func (m *TextFilesMount) Destination() string { return m.MountDestination }
+
+// MountOptions implements config.ContainerTextFilesMountConfig interface.
+//
+// Unlike the writable sources, the read-only default is not merely a default: `ro` is applied
+// whether or not it was asked for, and validation has already rejected `rw`. The hardening options
+// are only defaults, so a user who names any option at all is trusted to pick the rest.
+func (m *TextFilesMount) MountOptions() []string {
+	if len(m.MountOpts) == 0 {
+		return []string{"ro", "nosuid", "nodev", "noexec"}
+	}
+
+	options := slices.Clone(m.MountOpts)
+
+	if !slices.Contains(options, "ro") {
+		options = append(options, "ro")
+	}
+
+	return options
+}
 
 // normalizeWritableOptions applies the writable default shared by every container mount kind.
 //

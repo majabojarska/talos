@@ -128,6 +128,7 @@ func NewState() (*State, error) {
 		&containers.ContainerInstanceStatus{},
 		&containers.ContainerLifecycle{},
 		&containers.ContainerStatus{},
+		&containers.TextFilesStatus{},
 		&block.FSScrubSchedule{},
 		&block.FSScrubStatus{},
 		&cluster.Affiliate{},

@@ -588,6 +588,13 @@ const (
 	// history reads as a single continuous log.
 	TalosContainersLogPrefix = TalosContainersContainerdNamespace + "-"
 
+	// TalosContainersTextFilesPath is the directory holding the file trees materialized from
+	// TextFilesConfig documents for containers declared via ContainerConfig.
+	//
+	// Under /system, which is a tmpfs: the trees are rebuilt from the machine configuration on every
+	// boot and never written to persistent storage.
+	TalosContainersTextFilesPath = SystemPath + "/containers/textfiles"
+
 	// CRIContainerdAddress is the path to the CRI containerd socket address.
 	CRIContainerdAddress = "/run/containerd/containerd.sock"
 
@@ -843,6 +850,14 @@ const (
 	// SelinuxLabelTalosContainerMachined is the SELinux label for containers declared via
 	// ContainerConfig with security.machinedAccess set.
 	SelinuxLabelTalosContainerMachined = "system_u:system_r:taloscontainer_machined_t:s0"
+
+	// TalosContainerTextFilesSelinuxLabel is the SELinux label for the file trees materialized from
+	// TextFilesConfig documents.
+	//
+	// A file type of its own rather than the generic system_t: it is the only thing under /system a
+	// Talos container is allowed to read, and a separate type keeps that grant from widening to the
+	// rest of the directory.
+	TalosContainerTextFilesSelinuxLabel = "system_u:object_r:taloscontainer_config_t:s0"
 
 	// SelinuxLabelUnconfinedService is the SELinux label for process without label set (normally should not occur).
 	SelinuxLabelUnconfinedService = "system_u:system_r:unconfined_service_t:s0"
