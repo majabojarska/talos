@@ -425,6 +425,7 @@ description: Talos gRPC API reference.
     - [ContainerSecuritySpec](#talos.resource.definitions.containers.ContainerSecuritySpec)
     - [ContainerSpecSpec](#talos.resource.definitions.containers.ContainerSpecSpec)
     - [ResolvedMountSpec](#talos.resource.definitions.containers.ResolvedMountSpec)
+    - [TextFilesStatusSpec](#talos.resource.definitions.containers.TextFilesStatusSpec)
   
 - [resource/definitions/cri/cri.proto](#resource/definitions/cri/cri.proto)
     - [BaseRuntimeSpecConfigSpec](#talos.resource.definitions.cri.BaseRuntimeSpecConfigSpec)
@@ -7455,17 +7456,20 @@ ContainerInstanceStatusSpec is the spec for ContainerInstanceStatus.
 ### ContainerMountSpec
 ContainerMountSpec is a resolved mount.
 
-Exactly one of VolumeID, Tmpfs or HostPath describes the source; Kind says which.
+Exactly one of VolumeID, Source, TextFilesName or nothing at all describes the source; Kind says
+which. Deliberately carries no file contents for the textFiles kind: this spec is user-visible via
+`talosctl get containerspecs`, and the contents are materialized by TextFilesController instead.
 
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| kind | [string](#string) |  | Kind is one of "userVolume", "tmpfs" or "hostPath". |
+| kind | [string](#string) |  | Kind is one of "userVolume", "tmpfs", "hostPath" or "textFiles". |
 | volume_id | [string](#string) |  | VolumeID is the block volume ID for a userVolume mount, e.g. "u-web-content". |
 | source | [string](#string) |  | Source is the host path for a hostPath mount. |
 | destination | [string](#string) |  | Destination inside the container. |
 | size | [uint64](#uint64) |  | Size of a tmpfs mount, in bytes; zero means the kernel default. |
 | options | [string](#string) | repeated | Options with the writable default already applied. |
+| text_files_name | [string](#string) |  | TextFilesName is the name of the TextFilesConfig document for a textFiles mount. |
 
 
 
@@ -7597,6 +7601,27 @@ ResolvedMountSpec is a mount with its host-side source resolved.
 | size | [uint64](#uint64) |  |  |
 | options | [string](#string) | repeated |  |
 | volume_id | [string](#string) |  | VolumeID is the resolved userVolume's ID; empty for tmpfs and hostPath. |
+| text_files_name | [string](#string) |  | TextFilesName is the resolved textFiles document name; empty for every other kind. |
+| content_hash | [string](#string) |  | ContentHash identifies the materialized contents of a textFiles mount; empty for every other kind.<br><br>This is what makes a container restart when its text files change: the instance carries the hash it was created with, so an edit shows up as instance drift rather than being applied silently underneath a running process. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.containers.TextFilesStatusSpec"></a>
+
+### TextFilesStatusSpec
+TextFilesStatusSpec is the spec for TextFilesStatus.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| container_id | [string](#string) |  | ContainerID is the name of the owning container, i.e. the ContainerSpec ID. |
+| document_name | [string](#string) |  | DocumentName is the name of the TextFilesConfig document the tree was built from. |
+| path | [string](#string) |  | Path is the host directory holding the materialized tree; empty when Error is set. |
+| content_hash | [string](#string) |  | ContentHash identifies the materialized contents; empty when Error is set. |
+| error | [string](#string) |  | Error describes why the tree could not be materialized. |
 
 
 

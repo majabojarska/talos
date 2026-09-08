@@ -117,7 +117,8 @@ typed so that Talos can reason about what a container is allowed to reach.
 |-------|------|-------------|----------|
 |`userVolume` |<a href="#ContainerConfig.mounts..userVolume">UserVolumeMount</a> |Mount a user volume, referenced by the name of its `UserVolumeConfig` document.<br><br>The volume is mounted from `/var/mnt/<name>` on the host. Declaring this mount also<br>makes the container wait for the volume to be mounted before it starts.  | |
 |`tmpfs` |<a href="#ContainerConfig.mounts..tmpfs">TmpfsMount</a> |Mount a tmpfs for scratch space.  | |
-|`hostPath` |<a href="#ContainerConfig.mounts..hostPath">HostPathMount</a> |Bind-mount a path from the host.<br><br>The source must already exist; Talos will not create it. This is the widest of the<br>three sources and the only one that can reach arbitrary host state.  | |
+|`hostPath` |<a href="#ContainerConfig.mounts..hostPath">HostPathMount</a> |Bind-mount a path from the host.<br><br>The source must already exist; Talos will not create it. This is the widest of the<br>sources and the only one that can reach arbitrary host state.  | |
+|`textFiles` |<a href="#ContainerConfig.mounts..textFiles">TextFilesMount</a> |Mount a set of text files, referenced by the name of its `TextFilesConfig` document.<br><br>The document's contents are materialized as a directory tree on the host and<br>bind-mounted here. The mount is always read-only.  | |
 
 
 
@@ -172,6 +173,24 @@ HostPathMount bind-mounts a host path.
 |`source` |string |Absolute path on the host. Must already exist.  | |
 |`destination` |string |Absolute path inside the container's mount namespace.  | |
 |`options` |[]string |Mount options. Host path mounts are writable by default (`rw`).  | |
+
+
+
+
+
+
+### textFiles {#ContainerConfig.mounts..textFiles}
+
+TextFilesMount mounts a TextFilesConfig document's files.
+
+
+
+
+| Field | Type | Description | Value(s) |
+|-------|------|-------------|----------|
+|`name` |string |Name of the `TextFilesConfig` document to mount.  | |
+|`destination` |string |Absolute path inside the container's mount namespace.  | |
+|`options` |[]string |Mount options.<br><br>Text file mounts are read-only: `ro` is always applied and `rw` is rejected. When no<br>options are given, `nosuid`, `nodev` and `noexec` are applied as well.  |`ro`<br />`noexec`<br />`nosuid`<br />`nodev`<br />`noatime`<br />`rbind`<br />`rshared`<br /> |
 
 
 

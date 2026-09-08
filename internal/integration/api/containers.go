@@ -1061,6 +1061,122 @@ sleep 3600`,
 		"the container could not connect to the machined socket: %s", logs)
 }
 
+// TestContainerTextFilesMount covers a container mounting a TextFilesConfig document: the tree is
+// materialized on the host with its nested paths intact, the container can read it read-only, and
+// editing the content replaces the instance rather than changing what a running process reads.
+func (suite *ContainersSuite) TestContainerTextFilesMount() {
+	ctx, name, node := suite.setupContainer("textfiles")
+	textFilesName := suite.setupTextFiles(ctx, node, "textfiles", map[string]string{
+		"foo.conf":       "key1=val1\n",
+		"subdir/baz.ini": "key2=val2\n",
+	})
+
+	const destination = "/etc/foobar/something"
+
+	// Reading both files is what proves the tree is really mounted with its subdirectory intact; the
+	// write attempt proves it is read-only. Parked with sleep afterwards because a container that
+	// exits is restarted, which would race the assertion that it is running.
+	doc := suite.shellContainer(name,
+		"cat "+destination+"/foo.conf "+destination+"/subdir/baz.ini"+
+			" && (echo x > "+destination+"/foo.conf 2>/dev/null && echo WRITABLE || echo READONLY)"+
+			" && sleep 3600")
+	doc.MountsConfig = []containercfg.ContainerMount{
+		{
+			TextFilesMount: &containercfg.TextFilesMount{
+				SourceName:       textFilesName,
+				MountDestination: destination,
+			},
+		},
+	}
+
+	suite.applyContainers(ctx, doc)
+
+	expectedPath := filepath.Join(constants.TalosContainersTextFilesPath, name, textFilesName)
+
+	rtestutils.AssertResource(ctx, suite.T(), suite.Client.COSI, name,
+		func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+			asrt.True(status.TypedSpec().Ready, "error: %q", status.TypedSpec().Error)
+
+			if !asrt.Len(status.TypedSpec().Mounts, 1) {
+				return
+			}
+
+			asrt.Equal(expectedPath, status.TypedSpec().Mounts[0].Source)
+			asrt.Equal(destination, status.TypedSpec().Mounts[0].Destination)
+			asrt.NotEmpty(status.TypedSpec().Mounts[0].ContentHash)
+		})
+
+	// One tree per (container, document) pair, named after both.
+	rtestutils.AssertResource(ctx, suite.T(), suite.Client.COSI,
+		containers.TextFilesStatusID(name, textFilesName),
+		func(status *containers.TextFilesStatus, asrt *assert.Assertions) {
+			asrt.Empty(status.TypedSpec().Error)
+			asrt.Equal(expectedPath, status.TypedSpec().Path)
+		})
+
+	suite.assertContainerLogged(ctx, name, "key1=val1")
+	suite.assertContainerLogged(ctx, name, "key2=val2")
+	// A failure here is most likely SELinux denying the read rather than the mount being writable, so
+	// check the node's audit log before assuming the mount options are wrong.
+	suite.assertContainerLogged(ctx, name, "READONLY")
+
+	oldInstanceID, oldInstance := suite.assertContainerRunning(ctx, name, "with the text files mounted")
+
+	suite.T().Logf("editing text files %q", textFilesName)
+
+	suite.applyTextFiles(ctx, textFilesName, map[string]string{
+		"foo.conf":       "key1=edited\n",
+		"subdir/baz.ini": "key2=val2\n",
+	})
+
+	// The content hash is part of the instance's resolved mounts, so an edit is instance drift: the
+	// running container is replaced rather than having the file changed underneath it.
+	rtestutils.AssertNoResource[*containers.ContainerInstanceSpec](ctx, suite.T(), suite.Client.COSI, oldInstanceID)
+
+	newInstanceID, newInstance := suite.assertContainerRunning(ctx, name, "after the text files edit")
+
+	suite.Assert().NotEqual(oldInstanceID, newInstanceID, "instance was reused across the content change")
+	suite.Assert().Greater(newInstance.Generation, oldInstance.Generation,
+		"expected a generation later than %d, got %d", oldInstance.Generation, newInstance.Generation)
+
+	suite.assertContainerLogged(ctx, name, "key1=edited")
+
+	suite.T().Logf("removing container config %q", name)
+
+	suite.RemoveMachineConfigDocumentsByName(ctx, containercfg.ContainerConfigKind, name)
+
+	// The tree exists for the container, so it goes when the container does.
+	rtestutils.AssertNoResource[*containers.TextFilesStatus](ctx, suite.T(), suite.Client.COSI,
+		containers.TextFilesStatusID(name, textFilesName))
+}
+
+// setupTextFiles declares a TextFilesConfig document unique to this test and returns its name.
+func (suite *ContainersSuite) setupTextFiles(ctx context.Context, node, purpose string, files map[string]string) string {
+	name := fmt.Sprintf("itf-%s-%04x", purpose, rand.Int31())
+
+	suite.T().Cleanup(func() {
+		// suite.ctx is likely canceled by the time this runs.
+		cleanupCtx := client.WithNode(context.Background(), node)
+
+		suite.RemoveMachineConfigDocumentsByName(cleanupCtx, containercfg.TextFilesConfigKind, name)
+	})
+
+	suite.applyTextFiles(ctx, name, files)
+
+	return name
+}
+
+// applyTextFiles applies a TextFilesConfig document with the given contents.
+func (suite *ContainersSuite) applyTextFiles(ctx context.Context, name string, files map[string]string) {
+	suite.T().Logf("applying text files %q", name)
+
+	doc := containercfg.NewTextFilesConfigV1Alpha1()
+	doc.MetaName = name
+	doc.Files = files
+
+	suite.PatchMachineConfig(ctx, doc)
+}
+
 // setupContainer returns a node-scoped context and a container name unique to this test, and registers
 // removal of that container's config. Registering the cleanup here rather than after the container is
 // applied means a failure part-way through does not leave the container running for the rest of the

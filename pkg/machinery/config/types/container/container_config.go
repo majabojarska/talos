@@ -369,13 +369,19 @@ func mustParse(ref string) name.Reference {
 
 // ValidateName checks the container name.
 func (c *ContainerConfigV1Alpha1) ValidateName() error {
+	return ValidateDocumentName(c.MetaName)
+}
+
+// ValidateDocumentName checks a name that has to survive being used as a containerd container ID,
+// a log identifier and a host path component.
+func ValidateDocumentName(name string) error {
 	switch {
-	case c.MetaName == "":
+	case name == "":
 		return errors.New("name is required")
-	case len(c.MetaName) > maxNameLength:
-		return fmt.Errorf("name %q must be %d characters or fewer", c.MetaName, maxNameLength)
-	case !validNamePattern.MatchString(c.MetaName):
-		return fmt.Errorf("name %q: name can only contain lowercase ASCII letters, digits and hyphens", c.MetaName)
+	case len(name) > maxNameLength:
+		return fmt.Errorf("name %q must be %d characters or fewer", name, maxNameLength)
+	case !validNamePattern.MatchString(name):
+		return fmt.Errorf("name %q: name can only contain lowercase ASCII letters, digits and hyphens", name)
 	}
 
 	return nil

@@ -106,7 +106,10 @@ func (container *Container) validate(mode validation.RuntimeMode, opt ...validat
 		}
 	}
 
-	if err := container.validateContainer(mode); err != nil {
+	containerWarnings, err := container.validateContainer(mode)
+	warnings = append(warnings, containerWarnings...)
+
+	if err != nil {
 		multiErr = multierror.Append(multiErr, err)
 	}
 
@@ -204,9 +207,15 @@ func (container *Container) runtimeValidateContainer(ctx context.Context, st sta
 //
 // This validation is used to do validation which only makes sense for the full configuration (vs. individual documents).
 //
+// Returns warnings alongside the fatal errors, since some container-level checks (e.g. textFiles
+// tmpfs sizing) are advisory rather than fatal.
+//
 //nolint:gocyclo,cyclop
-func (container *Container) validateContainer(mode validation.RuntimeMode) error {
-	var errs error
+func (container *Container) validateContainer(mode validation.RuntimeMode) ([]string, error) {
+	var (
+		warnings []string
+		errs     error
+	)
 
 	if mode.InContainer() {
 		// in container mode, HostDNS must be enabled and forward KubeDNS to host must be enabled as well
@@ -262,6 +271,16 @@ func (container *Container) validateContainer(mode validation.RuntimeMode) error
 		errs = multierror.Append(errs, err)
 	}
 
+	// Same reasoning for textFiles mounts: the referenced document lives in a sibling document, so
+	// only a container-level check can see it.
+	if err := validateContainerTextFilesReferences(container.ContainerConfigs(), container.TextFilesConfigs()); err != nil {
+		errs = multierror.Append(errs, err)
+	}
+
+	// The per-document Validate warns on a document's own size; only a container-level check can see
+	// how many containers actually mount it, which is what determines the real tmpfs cost.
+	warnings = append(warnings, validateContainerTextFilesSize(container.ContainerConfigs(), container.TextFilesConfigs())...)
+
 	// KubeSpan requires a cluster identity, provided either by the deprecated .cluster.id/.cluster.secret
 	// or by a DiscoveryIdentityConfig document. The identity may live in a separate document, so this
 	// cross-document check is done at the container level.
@@ -313,7 +332,7 @@ func (container *Container) validateContainer(mode validation.RuntimeMode) error
 		)
 	}
 
-	return errs
+	return warnings, errs
 }
 
 // Validate is the legacy validation method.

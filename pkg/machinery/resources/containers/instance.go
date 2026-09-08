@@ -84,6 +84,15 @@ type ResolvedMountSpec struct {
 	Options     []string `yaml:"options,omitempty" protobuf:"5"`
 	// VolumeID is the resolved userVolume's ID; empty for tmpfs and hostPath.
 	VolumeID string `yaml:"volumeID,omitempty" protobuf:"6"`
+	// TextFilesName is the resolved textFiles document name; empty for every other kind.
+	TextFilesName string `yaml:"textFilesName,omitempty" protobuf:"7"`
+	// ContentHash identifies the materialized contents of a textFiles mount; empty for every other
+	// kind.
+	//
+	// This is what makes a container restart when its text files change: the instance carries the
+	// hash it was created with, so an edit shows up as instance drift rather than being applied
+	// silently underneath a running process.
+	ContentHash string `yaml:"contentHash,omitempty" protobuf:"8"`
 }
 
 // NewContainerInstanceSpec initializes a ContainerInstanceSpec resource.
@@ -279,6 +288,8 @@ func ResolvedMountsEqual(a, b []ResolvedMountSpec) bool {
 			x.Destination == y.Destination &&
 			x.Size == y.Size &&
 			x.VolumeID == y.VolumeID &&
+			x.TextFilesName == y.TextFilesName &&
+			x.ContentHash == y.ContentHash &&
 			slices.Equal(x.Options, y.Options)
 	})
 }

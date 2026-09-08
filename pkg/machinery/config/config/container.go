@@ -38,11 +38,12 @@ type ContainerConfig interface {
 
 // ContainerMountConfig defines a single container mount.
 //
-// Exactly one of the three sources is present.
+// Exactly one of the sources is present.
 type ContainerMountConfig interface {
 	UserVolume() optional.Optional[ContainerUserVolumeMountConfig]
 	Tmpfs() optional.Optional[ContainerTmpfsMountConfig]
 	HostPath() optional.Optional[ContainerHostPathMountConfig]
+	TextFiles() optional.Optional[ContainerTextFilesMountConfig]
 }
 
 // ContainerUserVolumeMountConfig mounts a user volume by name.
@@ -72,6 +73,16 @@ type ContainerHostPathMountConfig interface {
 	// Destination inside the container.
 	Destination() string
 	// MountOptions with the writable default already applied.
+	MountOptions() []string
+}
+
+// ContainerTextFilesMountConfig mounts a TextFilesConfig document by name.
+type ContainerTextFilesMountConfig interface {
+	// Name of the TextFilesConfig document.
+	Name() string
+	// Destination inside the container.
+	Destination() string
+	// MountOptions with the read-only default already applied; always contains "ro".
 	MountOptions() []string
 }
 

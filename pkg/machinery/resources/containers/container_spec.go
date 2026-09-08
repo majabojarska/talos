@@ -139,6 +139,10 @@ func (containerSpec ContainerSpecSpec) InstanceProcessEqual(instanceSpec Contain
 
 // MountsResolvedMatchDeclared reports whether resolved describes the same mounts as declared.
 //
+// Identity only: a textFiles mount's ContentHash is deliberately not compared, because the declared
+// side never carries one. Content drift is drift of an existing mount, not a mount that has yet to
+// resolve, and is handled by InSyncWithContainerSpec replacing the instance.
+//
 // nolint: gocyclo
 func MountsResolvedMatchDeclared(resolved []ResolvedMountSpec, declared []ContainerMountSpec) bool {
 	if len(resolved) != len(declared) {
@@ -163,6 +167,10 @@ func MountsResolvedMatchDeclared(resolved []ResolvedMountSpec, declared []Contai
 		if mount.Kind == MountKindUserVolume && r.VolumeID != mount.VolumeID {
 			return false
 		}
+
+		if mount.Kind == MountKindTextFiles && r.TextFilesName != mount.TextFilesName {
+			return false
+		}
 	}
 
 	return true
@@ -170,11 +178,13 @@ func MountsResolvedMatchDeclared(resolved []ResolvedMountSpec, declared []Contai
 
 // ContainerMountSpec is a resolved mount.
 //
-// Exactly one of VolumeID, Tmpfs or HostPath describes the source; Kind says which.
+// Exactly one of VolumeID, Source, TextFilesName or nothing at all describes the source; Kind says
+// which. Deliberately carries no file contents for the textFiles kind: this spec is user-visible via
+// `talosctl get containerspecs`, and the contents are materialized by TextFilesController instead.
 //
 //gotagsrewrite:gen
 type ContainerMountSpec struct {
-	// Kind is one of "userVolume", "tmpfs" or "hostPath".
+	// Kind is one of "userVolume", "tmpfs", "hostPath" or "textFiles".
 	Kind string `yaml:"kind" protobuf:"1"`
 	// VolumeID is the block volume ID for a userVolume mount, e.g. "u-web-content".
 	VolumeID string `yaml:"volumeID,omitempty" protobuf:"2"`
@@ -186,6 +196,8 @@ type ContainerMountSpec struct {
 	Size uint64 `yaml:"size,omitempty" protobuf:"5"`
 	// Options with the writable default already applied.
 	Options []string `yaml:"options,omitempty" protobuf:"6"`
+	// TextFilesName is the name of the TextFilesConfig document for a textFiles mount.
+	TextFilesName string `yaml:"textFilesName,omitempty" protobuf:"7"`
 }
 
 // Mount kinds.
@@ -193,6 +205,7 @@ const (
 	MountKindUserVolume = "userVolume"
 	MountKindTmpfs      = "tmpfs"
 	MountKindHostPath   = "hostPath"
+	MountKindTextFiles  = "textFiles"
 )
 
 // ContainerSecuritySpec is the resolved security posture.

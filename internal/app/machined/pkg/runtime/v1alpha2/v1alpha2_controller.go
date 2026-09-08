@@ -258,6 +258,10 @@ func (ctrl *Controller) Run(ctx context.Context, drainer *runtime.Drainer) error
 		&containerctrls.ImageController{
 			State: ctrl.v1alpha1Runtime.State().V1Alpha2().Resources(),
 		},
+		&containerctrls.TextFilesController{
+			V1Alpha1Mode: ctrl.v1alpha1Runtime.State().Platform().Mode(),
+			BaseDir:      constants.TalosContainersTextFilesPath,
+		},
 		&containerctrls.MountController{},
 		&containerctrls.InstanceController{},
 		&containerctrls.RuntimeController{

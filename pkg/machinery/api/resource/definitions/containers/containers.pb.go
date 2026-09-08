@@ -463,10 +463,12 @@ func (x *ContainerInstanceStatusSpec) GetFinishedAt() *timestamppb.Timestamp {
 
 // ContainerMountSpec is a resolved mount.
 //
-// Exactly one of VolumeID, Tmpfs or HostPath describes the source; Kind says which.
+// Exactly one of VolumeID, Source, TextFilesName or nothing at all describes the source; Kind says
+// which. Deliberately carries no file contents for the textFiles kind: this spec is user-visible via
+// `talosctl get containerspecs`, and the contents are materialized by TextFilesController instead.
 type ContainerMountSpec struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Kind is one of "userVolume", "tmpfs" or "hostPath".
+	// Kind is one of "userVolume", "tmpfs", "hostPath" or "textFiles".
 	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	// VolumeID is the block volume ID for a userVolume mount, e.g. "u-web-content".
 	VolumeId string `protobuf:"bytes,2,opt,name=volume_id,json=volumeId,proto3" json:"volume_id,omitempty"`
@@ -477,7 +479,9 @@ type ContainerMountSpec struct {
 	// Size of a tmpfs mount, in bytes; zero means the kernel default.
 	Size uint64 `protobuf:"varint,5,opt,name=size,proto3" json:"size,omitempty"`
 	// Options with the writable default already applied.
-	Options       []string `protobuf:"bytes,6,rep,name=options,proto3" json:"options,omitempty"`
+	Options []string `protobuf:"bytes,6,rep,name=options,proto3" json:"options,omitempty"`
+	// TextFilesName is the name of the TextFilesConfig document for a textFiles mount.
+	TextFilesName string `protobuf:"bytes,7,opt,name=text_files_name,json=textFilesName,proto3" json:"text_files_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -552,6 +556,13 @@ func (x *ContainerMountSpec) GetOptions() []string {
 		return x.Options
 	}
 	return nil
+}
+
+func (x *ContainerMountSpec) GetTextFilesName() string {
+	if x != nil {
+		return x.TextFilesName
+	}
+	return ""
 }
 
 // ContainerMountStatusSpec is the spec for ContainerMountStatus.
@@ -983,7 +994,16 @@ type ResolvedMountSpec struct {
 	Size        uint64   `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
 	Options     []string `protobuf:"bytes,5,rep,name=options,proto3" json:"options,omitempty"`
 	// VolumeID is the resolved userVolume's ID; empty for tmpfs and hostPath.
-	VolumeId      string `protobuf:"bytes,6,opt,name=volume_id,json=volumeId,proto3" json:"volume_id,omitempty"`
+	VolumeId string `protobuf:"bytes,6,opt,name=volume_id,json=volumeId,proto3" json:"volume_id,omitempty"`
+	// TextFilesName is the resolved textFiles document name; empty for every other kind.
+	TextFilesName string `protobuf:"bytes,7,opt,name=text_files_name,json=textFilesName,proto3" json:"text_files_name,omitempty"`
+	// ContentHash identifies the materialized contents of a textFiles mount; empty for every other
+	// kind.
+	//
+	// This is what makes a container restart when its text files change: the instance carries the
+	// hash it was created with, so an edit shows up as instance drift rather than being applied
+	// silently underneath a running process.
+	ContentHash   string `protobuf:"bytes,8,opt,name=content_hash,json=contentHash,proto3" json:"content_hash,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1060,6 +1080,102 @@ func (x *ResolvedMountSpec) GetVolumeId() string {
 	return ""
 }
 
+func (x *ResolvedMountSpec) GetTextFilesName() string {
+	if x != nil {
+		return x.TextFilesName
+	}
+	return ""
+}
+
+func (x *ResolvedMountSpec) GetContentHash() string {
+	if x != nil {
+		return x.ContentHash
+	}
+	return ""
+}
+
+// TextFilesStatusSpec is the spec for TextFilesStatus.
+type TextFilesStatusSpec struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// ContainerID is the name of the owning container, i.e. the ContainerSpec ID.
+	ContainerId string `protobuf:"bytes,1,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	// DocumentName is the name of the TextFilesConfig document the tree was built from.
+	DocumentName string `protobuf:"bytes,2,opt,name=document_name,json=documentName,proto3" json:"document_name,omitempty"`
+	// Path is the host directory holding the materialized tree; empty when Error is set.
+	Path string `protobuf:"bytes,3,opt,name=path,proto3" json:"path,omitempty"`
+	// ContentHash identifies the materialized contents; empty when Error is set.
+	ContentHash string `protobuf:"bytes,4,opt,name=content_hash,json=contentHash,proto3" json:"content_hash,omitempty"`
+	// Error describes why the tree could not be materialized.
+	Error         string `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TextFilesStatusSpec) Reset() {
+	*x = TextFilesStatusSpec{}
+	mi := &file_resource_definitions_containers_containers_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TextFilesStatusSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TextFilesStatusSpec) ProtoMessage() {}
+
+func (x *TextFilesStatusSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_resource_definitions_containers_containers_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TextFilesStatusSpec.ProtoReflect.Descriptor instead.
+func (*TextFilesStatusSpec) Descriptor() ([]byte, []int) {
+	return file_resource_definitions_containers_containers_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *TextFilesStatusSpec) GetContainerId() string {
+	if x != nil {
+		return x.ContainerId
+	}
+	return ""
+}
+
+func (x *TextFilesStatusSpec) GetDocumentName() string {
+	if x != nil {
+		return x.DocumentName
+	}
+	return ""
+}
+
+func (x *TextFilesStatusSpec) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *TextFilesStatusSpec) GetContentHash() string {
+	if x != nil {
+		return x.ContentHash
+	}
+	return ""
+}
+
+func (x *TextFilesStatusSpec) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_resource_definitions_containers_containers_proto protoreflect.FileDescriptor
 
 const file_resource_definitions_containers_containers_proto_rawDesc = "" +
@@ -1110,14 +1226,15 @@ const file_resource_definitions_containers_containers_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
 	"\vfinished_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"finishedAt\"\xad\x01\n" +
+	"finishedAt\"\xd5\x01\n" +
 	"\x12ContainerMountSpec\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x1b\n" +
 	"\tvolume_id\x18\x02 \x01(\tR\bvolumeId\x12\x16\n" +
 	"\x06source\x18\x03 \x01(\tR\x06source\x12 \n" +
 	"\vdestination\x18\x04 \x01(\tR\vdestination\x12\x12\n" +
 	"\x04size\x18\x05 \x01(\x04R\x04size\x12\x18\n" +
-	"\aoptions\x18\x06 \x03(\tR\aoptions\"\x98\x01\n" +
+	"\aoptions\x18\x06 \x03(\tR\aoptions\x12&\n" +
+	"\x0ftext_files_name\x18\a \x01(\tR\rtextFilesName\"\x98\x01\n" +
 	"\x18ContainerMountStatusSpec\x12\x14\n" +
 	"\x05ready\x18\x01 \x01(\bR\x05ready\x12P\n" +
 	"\x06mounts\x18\x02 \x03(\v28.talos.resource.definitions.containers.ResolvedMountSpecR\x06mounts\x12\x14\n" +
@@ -1153,14 +1270,22 @@ const file_resource_definitions_containers_containers_proto_rawDesc = "" +
 	"\tresources\x18\n" +
 	" \x01(\v2=.talos.resource.definitions.containers.ContainerResourcesSpecR\tresources\x12\\\n" +
 	"\n" +
-	"depends_on\x18\v \x01(\v2=.talos.resource.definitions.containers.ContainerDependsOnSpecR\tdependsOn\"\xac\x01\n" +
+	"depends_on\x18\v \x01(\v2=.talos.resource.definitions.containers.ContainerDependsOnSpecR\tdependsOn\"\xf7\x01\n" +
 	"\x11ResolvedMountSpec\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
 	"\x06source\x18\x02 \x01(\tR\x06source\x12 \n" +
 	"\vdestination\x18\x03 \x01(\tR\vdestination\x12\x12\n" +
 	"\x04size\x18\x04 \x01(\x04R\x04size\x12\x18\n" +
 	"\aoptions\x18\x05 \x03(\tR\aoptions\x12\x1b\n" +
-	"\tvolume_id\x18\x06 \x01(\tR\bvolumeIdB~\n" +
+	"\tvolume_id\x18\x06 \x01(\tR\bvolumeId\x12&\n" +
+	"\x0ftext_files_name\x18\a \x01(\tR\rtextFilesName\x12!\n" +
+	"\fcontent_hash\x18\b \x01(\tR\vcontentHash\"\xaa\x01\n" +
+	"\x13TextFilesStatusSpec\x12!\n" +
+	"\fcontainer_id\x18\x01 \x01(\tR\vcontainerId\x12#\n" +
+	"\rdocument_name\x18\x02 \x01(\tR\fdocumentName\x12\x12\n" +
+	"\x04path\x18\x03 \x01(\tR\x04path\x12!\n" +
+	"\fcontent_hash\x18\x04 \x01(\tR\vcontentHash\x12\x14\n" +
+	"\x05error\x18\x05 \x01(\tR\x05errorB~\n" +
 	"-dev.talos.api.resource.definitions.containersZMgithub.com/siderolabs/talos/pkg/machinery/api/resource/definitions/containersb\x06proto3"
 
 var (
@@ -1175,7 +1300,7 @@ func file_resource_definitions_containers_containers_proto_rawDescGZIP() []byte 
 	return file_resource_definitions_containers_containers_proto_rawDescData
 }
 
-var file_resource_definitions_containers_containers_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_resource_definitions_containers_containers_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_resource_definitions_containers_containers_proto_goTypes = []any{
 	(*ContainerDependsOnSpec)(nil),              // 0: talos.resource.definitions.containers.ContainerDependsOnSpec
 	(*ContainerImageSpec)(nil),                  // 1: talos.resource.definitions.containers.ContainerImageSpec
@@ -1190,20 +1315,21 @@ var file_resource_definitions_containers_containers_proto_goTypes = []any{
 	(*ContainerSecuritySpec)(nil),               // 10: talos.resource.definitions.containers.ContainerSecuritySpec
 	(*ContainerSpecSpec)(nil),                   // 11: talos.resource.definitions.containers.ContainerSpecSpec
 	(*ResolvedMountSpec)(nil),                   // 12: talos.resource.definitions.containers.ResolvedMountSpec
-	(enums.ContainersContainerImagePhase)(0),    // 13: talos.resource.definitions.enums.ContainersContainerImagePhase
-	(enums.ContainersContainerInstancePhase)(0), // 14: talos.resource.definitions.enums.ContainersContainerInstancePhase
-	(*timestamppb.Timestamp)(nil),               // 15: google.protobuf.Timestamp
+	(*TextFilesStatusSpec)(nil),                 // 13: talos.resource.definitions.containers.TextFilesStatusSpec
+	(enums.ContainersContainerImagePhase)(0),    // 14: talos.resource.definitions.enums.ContainersContainerImagePhase
+	(enums.ContainersContainerInstancePhase)(0), // 15: talos.resource.definitions.enums.ContainersContainerInstancePhase
+	(*timestamppb.Timestamp)(nil),               // 16: google.protobuf.Timestamp
 }
 var file_resource_definitions_containers_containers_proto_depIdxs = []int32{
-	13, // 0: talos.resource.definitions.containers.ContainerImageStatusSpec.phase:type_name -> talos.resource.definitions.enums.ContainersContainerImagePhase
+	14, // 0: talos.resource.definitions.containers.ContainerImageStatusSpec.phase:type_name -> talos.resource.definitions.enums.ContainersContainerImagePhase
 	9,  // 1: talos.resource.definitions.containers.ContainerInstanceSpecSpec.run_as:type_name -> talos.resource.definitions.containers.ContainerRunAsSpec
 	12, // 2: talos.resource.definitions.containers.ContainerInstanceSpecSpec.mounts:type_name -> talos.resource.definitions.containers.ResolvedMountSpec
 	10, // 3: talos.resource.definitions.containers.ContainerInstanceSpecSpec.security:type_name -> talos.resource.definitions.containers.ContainerSecuritySpec
 	7,  // 4: talos.resource.definitions.containers.ContainerInstanceSpecSpec.network:type_name -> talos.resource.definitions.containers.ContainerNetworkSpec
 	8,  // 5: talos.resource.definitions.containers.ContainerInstanceSpecSpec.resources:type_name -> talos.resource.definitions.containers.ContainerResourcesSpec
-	14, // 6: talos.resource.definitions.containers.ContainerInstanceStatusSpec.phase:type_name -> talos.resource.definitions.enums.ContainersContainerInstancePhase
-	15, // 7: talos.resource.definitions.containers.ContainerInstanceStatusSpec.started_at:type_name -> google.protobuf.Timestamp
-	15, // 8: talos.resource.definitions.containers.ContainerInstanceStatusSpec.finished_at:type_name -> google.protobuf.Timestamp
+	15, // 6: talos.resource.definitions.containers.ContainerInstanceStatusSpec.phase:type_name -> talos.resource.definitions.enums.ContainersContainerInstancePhase
+	16, // 7: talos.resource.definitions.containers.ContainerInstanceStatusSpec.started_at:type_name -> google.protobuf.Timestamp
+	16, // 8: talos.resource.definitions.containers.ContainerInstanceStatusSpec.finished_at:type_name -> google.protobuf.Timestamp
 	12, // 9: talos.resource.definitions.containers.ContainerMountStatusSpec.mounts:type_name -> talos.resource.definitions.containers.ResolvedMountSpec
 	1,  // 10: talos.resource.definitions.containers.ContainerSpecSpec.image:type_name -> talos.resource.definitions.containers.ContainerImageSpec
 	9,  // 11: talos.resource.definitions.containers.ContainerSpecSpec.run_as:type_name -> talos.resource.definitions.containers.ContainerRunAsSpec
@@ -1230,7 +1356,7 @@ func file_resource_definitions_containers_containers_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_resource_definitions_containers_containers_proto_rawDesc), len(file_resource_definitions_containers_containers_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

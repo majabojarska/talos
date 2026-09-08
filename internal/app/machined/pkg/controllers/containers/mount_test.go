@@ -343,3 +343,79 @@ func (suite *MountSuite) TestReleasesEverythingOnLifecycleTeardown() {
 
 	ctest.AssertNoResource[*block.VolumeMountRequest](suite, testRequestID)
 }
+
+// textFilesMountSpec is the declared textFiles mount the tests below use.
+const textFilesMountName = "web-configs"
+
+func (suite *MountSuite) textFilesMount() containers.ContainerMountSpec {
+	return containers.ContainerMountSpec{
+		Kind:          containers.MountKindTextFiles,
+		TextFilesName: textFilesMountName,
+		Destination:   "/etc/nginx/conf.d",
+		Options:       []string{"ro", "nosuid", "nodev", "noexec"},
+	}
+}
+
+// satisfyTextFiles creates the TextFilesStatus TextFilesController would produce.
+func (suite *MountSuite) satisfyTextFiles(path, contentHash, errorMessage string) {
+	status := containers.NewTextFilesStatus(containers.NamespaceName,
+		containers.TextFilesStatusID(mountContainer, textFilesMountName))
+	status.TypedSpec().ContainerID = mountContainer
+	status.TypedSpec().DocumentName = textFilesMountName
+	status.TypedSpec().Path = path
+	status.TypedSpec().ContentHash = contentHash
+	status.TypedSpec().Error = errorMessage
+
+	suite.Require().NoError(suite.State().Create(suite.Ctx(), status))
+}
+
+// TestWaitsForTextFilesStatus covers a textFiles mount whose tree has not been materialized yet.
+func (suite *MountSuite) TestWaitsForTextFilesStatus() {
+	suite.createSpec(suite.textFilesMount())
+
+	suite.assertMountsReady(false)
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Error, `waiting for text files "web-configs" to be materialized`)
+	})
+
+	// Unlike a user volume, nothing is requested from the block subsystem: the tree lives on a tmpfs
+	// owned by this node's configuration, so there is nothing to hold.
+	ctest.AssertNoResource[*block.VolumeMountRequest](suite,
+		mountControllerName+"/"+mountContainer+"/"+textFilesMountName)
+}
+
+// TestResolvesTextFiles covers a textFiles mount resolving to its materialized host path.
+func (suite *MountSuite) TestResolvesTextFiles() {
+	suite.createSpec(suite.textFilesMount())
+	suite.satisfyTextFiles("/system/containers/textfiles/nginx/web-configs", "abc123", "")
+
+	suite.assertMountsReady(true)
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		mounts := status.TypedSpec().Mounts
+		if !asrt.Len(mounts, 1) {
+			return
+		}
+
+		asrt.Equal(containers.MountKindTextFiles, mounts[0].Kind)
+		asrt.Equal("/system/containers/textfiles/nginx/web-configs", mounts[0].Source)
+		asrt.Equal("/etc/nginx/conf.d", mounts[0].Destination)
+		asrt.Equal(textFilesMountName, mounts[0].TextFilesName)
+		// The hash rides along so an edit shows up as instance drift rather than being applied
+		// underneath a running process.
+		asrt.Equal("abc123", mounts[0].ContentHash)
+	})
+}
+
+// TestTextFilesErrorMarksNotReady covers a document that could not be materialized.
+func (suite *MountSuite) TestTextFilesErrorMarksNotReady() {
+	suite.createSpec(suite.textFilesMount())
+	suite.satisfyTextFiles("", "", `text files "web-configs" is not configured`)
+
+	suite.assertMountsReady(false)
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.Contains(status.TypedSpec().Error, "is not configured")
+	})
+}

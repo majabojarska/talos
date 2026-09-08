@@ -194,7 +194,8 @@ func applyConfig(spec *containers.ContainerSpecSpec, cfg configcfg.ContainerConf
 // resolveMounts turns typed configuration mounts into resolved mount specs.
 //
 // A user volume is resolved to its block volume ID here rather than to a host path: the path is
-// only known once the volume is actually mounted, which is ContainerMountController's job.
+// only known once the volume is actually mounted, which is ContainerMountController's job. A
+// textFiles mount is left as a document name for the same reason.
 func resolveMounts(configMounts []configcfg.ContainerMountConfig) ([]containers.ContainerMountSpec, error) {
 	if len(configMounts) == 0 {
 		return nil, nil
@@ -242,6 +243,18 @@ func resolveMounts(configMounts []configcfg.ContainerMountConfig) ([]containers.
 				Source:      hostPath.Source(),
 				Destination: hostPath.Destination(),
 				Options:     hostPath.MountOptions(),
+			})
+		case mount.TextFiles().IsPresent():
+			textFiles, _ := mount.TextFiles().Get()
+
+			// Only the document name is carried, not its contents: materializing the tree is
+			// TextFilesController's job, and the resolved host path is MountController's, exactly as
+			// for a user volume.
+			out = append(out, containers.ContainerMountSpec{
+				Kind:          containers.MountKindTextFiles,
+				TextFilesName: textFiles.Name(),
+				Destination:   textFiles.Destination(),
+				Options:       textFiles.MountOptions(),
 			})
 		default:
 			return nil, fmt.Errorf("mounts[%d]: no mount source set", i)

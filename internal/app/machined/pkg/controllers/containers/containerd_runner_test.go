@@ -160,16 +160,41 @@ func TestMountsResolvedToOCI(t *testing.T) {
 			},
 		},
 		{
+			// The source is the materialized tree, filled in by MountController from the
+			// TextFilesStatus; the read-only options were already applied by the config layer.
+			name: "text files",
+			mounts: []containers.ResolvedMountSpec{
+				{
+					Kind:          containers.MountKindTextFiles,
+					Source:        "/system/containers/textfiles/director/director-configs",
+					Destination:   "/etc/director",
+					TextFilesName: "director-configs",
+					ContentHash:   "abc123",
+					Options:       []string{"ro", "nosuid", "nodev", "noexec"},
+				},
+			},
+			expected: []specs.Mount{
+				{
+					Type:        "bind",
+					Source:      "/system/containers/textfiles/director/director-configs",
+					Destination: "/etc/director",
+					Options:     []string{"rbind", "ro", "nosuid", "nodev", "noexec"},
+				},
+			},
+		},
+		{
 			name: "all kinds keep their declared order",
 			mounts: []containers.ResolvedMountSpec{
 				{Kind: containers.MountKindUserVolume, Source: "/var/mnt/data", Destination: "/mnt/data"},
 				{Kind: containers.MountKindTmpfs, Destination: "/scratch"},
 				{Kind: containers.MountKindHostPath, Source: "/var/log", Destination: "/host-log"},
+				{Kind: containers.MountKindTextFiles, Source: "/system/containers/textfiles/a/b", Destination: "/etc/b", Options: []string{"ro"}},
 			},
 			expected: []specs.Mount{
 				{Type: "bind", Source: "/var/mnt/data", Destination: "/mnt/data", Options: []string{"rbind"}},
 				{Type: "tmpfs", Source: "tmpfs", Destination: "/scratch", Options: []string{"nosuid", "nodev"}},
 				{Type: "bind", Source: "/var/log", Destination: "/host-log", Options: []string{"rbind"}},
+				{Type: "bind", Source: "/system/containers/textfiles/a/b", Destination: "/etc/b", Options: []string{"rbind", "ro"}},
 			},
 		},
 	} {

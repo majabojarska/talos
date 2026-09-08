@@ -25,3 +25,15 @@
 (allow taloscontainer_machined_t system_run_t (fs_classes (ro)))
 (allow taloscontainer_machined_t machine_socket_t (fs_classes (rw)))
 (allow taloscontainer_machined_t init_t (unix_stream_socket (connectto)))
+
+; File trees materialized from TextFilesConfig documents, written by machined under /system and
+; bind-mounted read-only into the containers that declared them.
+;
+; A file type of its own rather than the generic system_t: it is the only thing under /system a Talos
+; container is allowed to read, and a separate type keeps that grant from widening to the rest of the
+; directory. machined already has rw and relabel on any_f, so only the read side needs stating.
+(type taloscontainer_config_t)
+(call system_f (taloscontainer_config_t))
+(allow taloscontainer_config_t tmpfs_t (filesystem (associate)))
+(allow taloscontainer_t taloscontainer_config_t (fs_classes (ro)))
+(allow taloscontainer_machined_t taloscontainer_config_t (fs_classes (ro)))

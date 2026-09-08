@@ -146,8 +146,15 @@ func (ContainerMount) Doc() *encoder.Doc {
 				Name:        "hostPath",
 				Type:        "HostPathMount",
 				Note:        "",
-				Description: "Bind-mount a path from the host.\n\nThe source must already exist; Talos will not create it. This is the widest of the\nthree sources and the only one that can reach arbitrary host state.",
+				Description: "Bind-mount a path from the host.\n\nThe source must already exist; Talos will not create it. This is the widest of the\nsources and the only one that can reach arbitrary host state.",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "Bind-mount a path from the host." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+			{
+				Name:        "textFiles",
+				Type:        "TextFilesMount",
+				Note:        "",
+				Description: "Mount a set of text files, referenced by the name of its `TextFilesConfig` document.\n\nThe document's contents are materialized as a directory tree on the host and\nbind-mounted here. The mount is always read-only.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Mount a set of text files, referenced by the name of its `TextFilesConfig` document." /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
 		},
 	}
@@ -277,6 +284,54 @@ func (HostPathMount) Doc() *encoder.Doc {
 				Note:        "",
 				Description: "Mount options. Host path mounts are writable by default (`rw`).",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "Mount options. Host path mounts are writable by default (`rw`)." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+		},
+	}
+
+	return doc
+}
+
+func (TextFilesMount) Doc() *encoder.Doc {
+	doc := &encoder.Doc{
+		Type:        "TextFilesMount",
+		Comments:    [3]string{"" /* encoder.HeadComment */, "TextFilesMount mounts a TextFilesConfig document's files." /* encoder.LineComment */, "" /* encoder.FootComment */},
+		Description: "TextFilesMount mounts a TextFilesConfig document's files.",
+		AppearsIn: []encoder.Appearance{
+			{
+				TypeName:  "ContainerMount",
+				FieldName: "textFiles",
+			},
+		},
+		Fields: []encoder.Doc{
+			{
+				Name:        "name",
+				Type:        "string",
+				Note:        "",
+				Description: "Name of the `TextFilesConfig` document to mount.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Name of the `TextFilesConfig` document to mount." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+			{
+				Name:        "destination",
+				Type:        "string",
+				Note:        "",
+				Description: "Absolute path inside the container's mount namespace.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Absolute path inside the container's mount namespace." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+			{
+				Name:        "options",
+				Type:        "[]string",
+				Note:        "",
+				Description: "Mount options.\n\nText file mounts are read-only: `ro` is always applied and `rw` is rejected. When no\noptions are given, `nosuid`, `nodev` and `noexec` are applied as well.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Mount options." /* encoder.LineComment */, "" /* encoder.FootComment */},
+				Values: []string{
+					"ro",
+					"noexec",
+					"nosuid",
+					"nodev",
+					"noatime",
+					"rbind",
+					"rshared",
+				},
 			},
 		},
 	}
@@ -540,6 +595,40 @@ func (ContainerCapabilities) Doc() *encoder.Doc {
 	return doc
 }
 
+func (TextFilesConfigV1Alpha1) Doc() *encoder.Doc {
+	doc := &encoder.Doc{
+		Type:        "TextFilesConfig",
+		Comments:    [3]string{"" /* encoder.HeadComment */, "TextFilesConfig is a set of text files to be presented to a container." /* encoder.LineComment */, "" /* encoder.FootComment */},
+		Description: "TextFilesConfig is a set of text files to be presented to a container.\nTextFilesConfig declares a named set of text files, given inline as content keyed by a\nrelative path.\n\nThe document holds content only: it does nothing on its own until a `ContainerConfig`\nmounts it via a `textFiles` mount, at which point the paths are materialized as a real\ndirectory tree and bind-mounted read-only at the mount's destination. Nested paths become\nreal subdirectories.\n\nThe tree is rebuilt from the machine configuration on every boot and is never written to\npersistent storage, but the contents are stored in the machine configuration verbatim, so\ntreat anything put here as being as sensitive as the machine configuration itself.\n",
+		Fields: []encoder.Doc{
+			{
+				Type:   "Meta",
+				Inline: true,
+			},
+			{
+				Name:        "name",
+				Type:        "string",
+				Note:        "",
+				Description: "Name of the file set.\n\nMust be between 1 and 63 characters long, and can only contain lowercase ASCII\nletters, digits and hyphens. It is the name a `ContainerConfig` refers to, and is used\nas a directory name on the host.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Name of the file set." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+			{
+				Name:        "files",
+				Type:        "map[string]string",
+				Note:        "",
+				Description: "Files in the set, keyed by a path relative to the mount destination.\n\nA key containing a slash creates subdirectories. Keys must be relative and may not\nescape the set with `..`. Content must be valid UTF-8; files are created with mode\n`0644` and directories with `0755`.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Files in the set, keyed by a path relative to the mount destination." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+		},
+	}
+
+	doc.AddExample("", exampleTextFilesConfigV1Alpha1())
+
+	doc.Fields[2].AddExample("", exampleTextFiles())
+
+	return doc
+}
+
 // GetFileDoc returns documentation for the file container_doc.go.
 func GetFileDoc() *encoder.FileDoc {
 	return &encoder.FileDoc{
@@ -551,6 +640,7 @@ func GetFileDoc() *encoder.FileDoc {
 			UserVolumeMount{}.Doc(),
 			TmpfsMount{}.Doc(),
 			HostPathMount{}.Doc(),
+			TextFilesMount{}.Doc(),
 			ContainerRunAs{}.Doc(),
 			ContainerNetwork{}.Doc(),
 			ContainerResources{}.Doc(),
@@ -558,6 +648,7 @@ func GetFileDoc() *encoder.FileDoc {
 			ContainerDependsOn{}.Doc(),
 			ContainerSecurity{}.Doc(),
 			ContainerCapabilities{}.Doc(),
+			TextFilesConfigV1Alpha1{}.Doc(),
 		},
 	}
 }

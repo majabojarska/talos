@@ -61,6 +61,14 @@ func (ctrl *MountController) Inputs() []controller.Input {
 			Kind:      controller.InputWeak,
 		},
 		{
+			// Text file trees need no holding: they live on a tmpfs owned by this node's
+			// configuration, so a weak input is enough to notice one appearing or its contents
+			// changing.
+			Namespace: containers.NamespaceName,
+			Type:      containers.TextFilesStatusType,
+			Kind:      controller.InputWeak,
+		},
+		{
 			Namespace: containers.NamespaceName,
 			Type:      containers.ContainerLifecycleType,
 			ID:        optional.Some(containers.ContainerLifecycleID),
@@ -237,7 +245,46 @@ func (ctrl *MountController) reconcileContainer(
 	var reasons []string
 
 	for _, mount := range spec.TypedSpec().Mounts {
-		if mount.Kind != containers.MountKindUserVolume {
+		switch mount.Kind {
+		case containers.MountKindTextFiles:
+			statusID := containers.TextFilesStatusID(containerID, mount.TextFilesName)
+
+			status, getErr := safe.ReaderGetByID[*containers.TextFilesStatus](ctx, r, statusID)
+			if getErr != nil {
+				if !state.IsNotFoundError(getErr) {
+					return nil, false, "", fmt.Errorf("failed to get text files status %q: %w", statusID, getErr)
+				}
+
+				ready = false
+
+				reasons = append(reasons, fmt.Sprintf("waiting for text files %q to be materialized", mount.TextFilesName))
+
+				continue
+			}
+
+			if status.TypedSpec().Error != "" {
+				ready = false
+
+				reasons = append(reasons, fmt.Sprintf("text files %q: %s", mount.TextFilesName, status.TypedSpec().Error))
+
+				continue
+			}
+
+			// The content hash rides along so that editing a file replaces the instance rather than
+			// changing what a running process reads underneath itself.
+			resolved = append(resolved, containers.ResolvedMountSpec{
+				Kind:          mount.Kind,
+				Source:        status.TypedSpec().Path,
+				Destination:   mount.Destination,
+				Options:       mount.Options,
+				TextFilesName: mount.TextFilesName,
+				ContentHash:   status.TypedSpec().ContentHash,
+			})
+
+			continue
+		case containers.MountKindUserVolume:
+			// Handled below, via the block subsystem.
+		default:
 			// tmpfs and hostPath need nothing from the block subsystem: the source is either nothing
 			// at all or a path which must already exist.
 			resolved = append(resolved, containers.ResolvedMountSpec{
