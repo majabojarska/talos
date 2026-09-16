@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package talos.resource.definitions.hv;
+
+option go_package = "github.com/siderolabs/talos/pkg/machinery/api/resource/definitions/hv";
+option java_package = "dev.talos.api.resource.definitions.hv";
+
+// ContentLibraryStatusSpec is the spec for ContentLibraryStatus.
+message ContentLibraryStatusSpec {
+  // VolumeID is the ID of the volume backing the library.
+  string volume_id = 1;
+  // Path is the absolute path of the library's directory on the backing volume.
+  //
+  // Only meaningful when Ready.
+  string path = 2;
+  // Ready is true once the backing volume is mounted and the library directory exists.
+  bool ready = 3;
+  // Error describes why the library is not ready.
+  string error = 4;
+}
+

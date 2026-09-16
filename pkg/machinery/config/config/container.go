@@ -11,6 +11,7 @@ import "github.com/siderolabs/gen/optional"
 //nolint:interfacebloat
 type ContainerConfig interface {
 	NamedDocument
+	ContainerConfigSignal()
 
 	// Image is the OCI reference in canonical form.
 	Image() string

@@ -17,6 +17,7 @@ import (
 	"github.com/siderolabs/gen/optional"
 	"go.uber.org/zap"
 
+	"github.com/siderolabs/talos/internal/app/machined/pkg/controllers/block/mountholder"
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
 	"github.com/siderolabs/talos/pkg/machinery/resources/containers"
 )
@@ -37,6 +38,11 @@ type MountController struct{}
 // Name implements controller.Controller interface.
 func (ctrl *MountController) Name() string {
 	return "containers.MountController"
+}
+
+// holder gives back the mounts this controller has taken.
+func (ctrl *MountController) holder() mountholder.Holder {
+	return mountholder.Holder{Requester: ctrl.Name()}
 }
 
 // Inputs implements controller.Controller interface.
@@ -72,8 +78,7 @@ func (ctrl *MountController) Inputs() []controller.Input {
 			Kind:      controller.InputStrong,
 		},
 		{
-			// InputDestroyReady is what lets this controller tear down its own mount requests: it
-			// wakes us when one is tearing down with no finalizers left.
+			// InputDestroyReady/OutputShared: see the mountholder package.
 			Namespace: block.NamespaceName,
 			Type:      block.VolumeMountRequestType,
 			Kind:      controller.InputDestroyReady,
@@ -89,7 +94,6 @@ func (ctrl *MountController) Outputs() []controller.Output {
 			Kind: controller.OutputExclusive,
 		},
 		{
-			// Shared: many controllers write mount requests.
 			Type: block.VolumeMountRequestType,
 			Kind: controller.OutputShared,
 		},
@@ -343,7 +347,7 @@ func (ctrl *MountController) releaseUnwanted(
 	wanted map[string]struct{},
 	live map[string]struct{},
 ) error {
-	ownedVolumeMountRequests, err := ctrl.ownedRequests(ctx, runtime)
+	ownedVolumeMountRequests, err := ctrl.holder().OwnedRequests(ctx, runtime)
 	if err != nil {
 		return err
 	}
@@ -368,7 +372,7 @@ func (ctrl *MountController) releaseUnwanted(
 			continue
 		}
 
-		if err := ctrl.release(ctx, runtime, logger, requestID); err != nil {
+		if err := ctrl.holder().Release(ctx, runtime, logger, requestID); err != nil {
 			return err
 		}
 	}
@@ -378,100 +382,23 @@ func (ctrl *MountController) releaseUnwanted(
 
 // releaseAll releases every mount this controller holds, reporting how many are still held.
 func (ctrl *MountController) releaseAll(ctx context.Context, runtime controller.Runtime, logger *zap.Logger) (int, error) {
-	ownedVolumeMountRequests, err := ctrl.ownedRequests(ctx, runtime)
+	ownedVolumeMountRequests, err := ctrl.holder().OwnedRequests(ctx, runtime)
 	if err != nil {
 		return 0, err
 	}
 
 	for _, volumeMountRequest := range ownedVolumeMountRequests {
-		if err := ctrl.release(ctx, runtime, logger, volumeMountRequest.Metadata().ID()); err != nil {
+		if err := ctrl.holder().Release(ctx, runtime, logger, volumeMountRequest.Metadata().ID()); err != nil {
 			return 0, err
 		}
 	}
 
 	// Counted after the pass: a request whose teardown is still waiting on another finalizer is
 	// still held, and the shutdown barrier has to keep waiting for it.
-	remaining, err := ctrl.ownedRequests(ctx, runtime)
+	remaining, err := ctrl.holder().OwnedRequests(ctx, runtime)
 	if err != nil {
 		return 0, err
 	}
 
 	return len(remaining), nil
-}
-
-// ownedRequests returns the mount requests created by this controller.
-func (ctrl *MountController) ownedRequests(ctx context.Context, runtime controller.Runtime) ([]*block.VolumeMountRequest, error) {
-	volumeMountRequests, err := safe.ReaderListAll[*block.VolumeMountRequest](ctx, runtime)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list mount requests: %w", err)
-	}
-
-	var ownedVolumeMountRequests []*block.VolumeMountRequest
-
-	for volumeMountRequest := range volumeMountRequests.All() {
-		if volumeMountRequest.TypedSpec().Requester == ctrl.Name() {
-			ownedVolumeMountRequests = append(ownedVolumeMountRequests, volumeMountRequest)
-		}
-	}
-
-	return ownedVolumeMountRequests, nil
-}
-
-// release gives back one mount: the finalizer first, then the request itself.
-func (ctrl *MountController) release(ctx context.Context, runtime controller.Runtime, logger *zap.Logger, requestID string) error {
-	if err := ctrl.releaseFinalizer(ctx, runtime, logger, requestID); err != nil {
-		return err
-	}
-
-	return ctrl.destroyRequest(ctx, runtime, logger, requestID)
-}
-
-// releaseFinalizer drops this controller's hold on the mount status, if it holds one.
-func (ctrl *MountController) releaseFinalizer(ctx context.Context, runtime controller.Runtime, logger *zap.Logger, requestID string) error {
-	volumeMountStatus, err := safe.ReaderGetByID[*block.VolumeMountStatus](ctx, runtime, requestID)
-	if err != nil {
-		if state.IsNotFoundError(err) {
-			return nil
-		}
-
-		return fmt.Errorf("failed to get mount status %q: %w", requestID, err)
-	}
-
-	if !volumeMountStatus.Metadata().Finalizers().Has(ctrl.Name()) {
-		return nil
-	}
-
-	if err := runtime.RemoveFinalizer(ctx, volumeMountStatus.Metadata(), ctrl.Name()); err != nil {
-		return fmt.Errorf("failed to remove finalizer on %q: %w", requestID, err)
-	}
-
-	logger.Info("released volume mount", zap.String("request", requestID))
-
-	return nil
-}
-
-// destroyRequest tears down the mount request and destroys it once nothing holds it.
-func (ctrl *MountController) destroyRequest(ctx context.Context, runtime controller.Runtime, logger *zap.Logger, requestID string) error {
-	requestMD := block.NewVolumeMountRequest(block.NamespaceName, requestID).Metadata()
-
-	okToDestroy, err := runtime.Teardown(ctx, requestMD)
-	if err != nil {
-		if state.IsNotFoundError(err) {
-			return nil
-		}
-
-		return fmt.Errorf("failed to tear down mount request %q: %w", requestID, err)
-	}
-
-	if !okToDestroy {
-		logger.Debug("waiting for the volume mount request to be released", zap.String("request", requestID))
-
-		return nil
-	}
-
-	if err := runtime.Destroy(ctx, requestMD); err != nil && !state.IsNotFoundError(err) {
-		return fmt.Errorf("failed to destroy mount request %q: %w", requestID, err)
-	}
-
-	return nil
 }
