@@ -340,8 +340,8 @@ func (VirtualMachineDisk) Doc() *encoder.Doc {
 				Name:        "pool",
 				Type:        "string",
 				Note:        "",
-				Description: "Name of the `StoragePoolConfig` document this disk's volume lives in.\n\nThe pool is declared separately and is not provisioned by this document. The reference\nis checked for shape only: nothing resolves it against the rest of the machine\nconfiguration yet.",
-				Comments:    [3]string{"" /* encoder.HeadComment */, "Name of the `StoragePoolConfig` document this disk's volume lives in." /* encoder.LineComment */, "" /* encoder.FootComment */},
+				Description: "Name of the `StoragePool` document this disk's volume lives in.\n\nThe pool is declared separately and is not provisioned by this document. The reference\nis checked for shape only: nothing resolves it against the rest of the machine\nconfiguration yet.\n\nRequired for a `disk`, and not allowed on a `cdrom`, whose image is attached in place\nfrom its content library and never lands in a pool.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Name of the `StoragePool` document this disk's volume lives in." /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
 			{
 				Name:        "size",
@@ -493,7 +493,7 @@ func (VirtualMachineDiskFromImage) Doc() *encoder.Doc {
 				Name:        "mode",
 				Type:        "VirtualMachineDiskImageMode",
 				Note:        "",
-				Description: "How the volume is derived from the image.\n\n`copy` makes a full, independent copy. `linked` makes a thin qcow2 backed by the library\nimage: fast and space-cheap, but it pins that image for the lifetime of the disk, and it\nrequires `format: qcow2`.\n\nOptional; defaults to `copy`.",
+				Description: "How the volume is derived from the image.\n\n`copy` makes a full, independent copy. `linked` makes a thin qcow2 backed by the library\nimage: fast and space-cheap, but it pins that image for the lifetime of the disk, and it\nrequires `format: qcow2`.\n\nOptional; defaults to `copy`. Not allowed on a `cdrom`, whose read-only medium never\ndiverges from the image, and which is therefore attached in place.",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "How the volume is derived from the image." /* encoder.LineComment */, "" /* encoder.FootComment */},
 				Values: []string{
 					"copy",

@@ -58,6 +58,15 @@ func compileDomainGrammar(schemas fs.FS) (*relaxng.Grammar, error) {
 	return grammar, nil
 }
 
+// heliumDriverElement matches a <driver> element, which is dropped before validation.
+//
+// libvirt's grammar accepts <driver name="qemu" type="raw"/> inside a <disk> -- xmllint --relaxng
+// against this very schema agrees -- but helium's validator rejects every form of the element,
+// including an empty one, so its diskDriver define is simply unusable here. Talos renders <driver>
+// only within a <disk>; were it ever rendered under another device, that one would go unchecked
+// too.
+var heliumDriverElement = regexp.MustCompile(`<driver[^>]*(></driver>|/>)`)
+
 func validateDomainXML(data []byte) error {
 	domainGrammar.Do(func() {
 		schemas, err := fs.Sub(libvirtSchemas, "testdata/libvirt")
@@ -74,7 +83,7 @@ func validateDomainXML(data []byte) error {
 		return domainGrammar.err
 	}
 
-	doc, err := helium.NewParser().Parse(context.Background(), hoistInterfaceSources(data))
+	doc, err := helium.NewParser().Parse(context.Background(), hoistInterfaceSources(heliumDriverElement.ReplaceAll(data, nil)))
 	if err != nil {
 		return fmt.Errorf("parse domain XML: %w", err)
 	}

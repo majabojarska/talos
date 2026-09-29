@@ -7,6 +7,8 @@ package hypervisor_test
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,6 +23,8 @@ import (
 	"github.com/siderolabs/talos/internal/app/machined/pkg/controllers/ctest"
 	hypervisorctrl "github.com/siderolabs/talos/internal/app/machined/pkg/controllers/hypervisor"
 	"github.com/siderolabs/talos/pkg/machinery/config/container"
+	hypervisorcfg "github.com/siderolabs/talos/pkg/machinery/config/types/hypervisor"
+	"github.com/siderolabs/talos/pkg/machinery/hypervisorhelpers"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"github.com/siderolabs/talos/pkg/machinery/resources/hypervisor"
 )
@@ -467,4 +471,118 @@ func (*externalSpecProducer) Run(ctx context.Context, _ controller.Runtime, _ *z
 	<-ctx.Done()
 
 	return nil
+}
+
+// contentLibraryPlaceholder stands in for the library's mount point, which is a temporary
+// directory and therefore differs between runs, so that the fixture can stay exact.
+const contentLibraryPlaceholder = "/content-library"
+
+func (suite *VirtualMachineSpecSuite) TestRendersCDROMFromContentLibrary() {
+	path := suite.T().TempDir()
+	suite.Require().NoError(os.WriteFile(filepath.Join(path, "talos.iso"), []byte("iso"), 0o600))
+
+	library := hypervisor.NewContentLibraryStatus(hypervisor.NamespaceName, "images")
+	*library.TypedSpec() = hypervisor.ContentLibraryStatusSpec{VolumeID: "u-images", Path: path, Ready: true}
+	suite.Create(library)
+
+	doc := newVirtualMachine("booted")
+	doc.DisksConfig = []hypervisorcfg.VirtualMachineDisk{
+		{
+			DiskName:      "install",
+			DiskType:      hypervisorhelpers.VirtualMachineDiskTypeCDROM,
+			DiskBootOrder: 1,
+			ProvisionConfig: hypervisorcfg.VirtualMachineDiskProvision{
+				FromImageConfig: &hypervisorcfg.VirtualMachineDiskFromImage{
+					ImageLibrary: "images",
+					ImageFile:    "talos.iso",
+				},
+			},
+		},
+	}
+
+	cfg, err := container.New(doc)
+	suite.Require().NoError(err)
+	suite.Create(config.NewMachineConfig(cfg))
+
+	want, err := os.ReadFile(filepath.Join("testdata", "virtualmachinespec", "cdrom.xml"))
+	suite.Require().NoError(err)
+
+	ctest.AssertResource(suite, doc.Name(), func(res *hypervisor.VirtualMachineDomainSpec, asrt *assert.Assertions) {
+		asrt.Equal(string(want), strings.ReplaceAll(res.TypedSpec().DomainXML, path, contentLibraryPlaceholder)+"\n")
+	})
+
+	res, err := safe.StateGetByID[*hypervisor.VirtualMachineDomainSpec](suite.Ctx(), suite.State(), doc.Name())
+	suite.Require().NoError(err)
+	suite.Require().NoError(validateDomainXML([]byte(res.TypedSpec().DomainXML)))
+}
+
+// Two cdroms on the same driver must not both claim sda.
+func (suite *VirtualMachineSpecSuite) TestAllocatesDistinctTargetDevices() {
+	path := suite.T().TempDir()
+	suite.Require().NoError(os.WriteFile(filepath.Join(path, "talos.iso"), []byte("iso"), 0o600))
+
+	library := hypervisor.NewContentLibraryStatus(hypervisor.NamespaceName, "two-images")
+	*library.TypedSpec() = hypervisor.ContentLibraryStatusSpec{VolumeID: "u-two-images", Path: path, Ready: true}
+	suite.Create(library)
+
+	cdrom := func(name string, bus hypervisorhelpers.VirtualMachineDiskBus) hypervisorcfg.VirtualMachineDisk {
+		return hypervisorcfg.VirtualMachineDisk{
+			DiskName: name,
+			DiskType: hypervisorhelpers.VirtualMachineDiskTypeCDROM,
+			DiskBus:  bus,
+			ProvisionConfig: hypervisorcfg.VirtualMachineDiskProvision{
+				FromImageConfig: &hypervisorcfg.VirtualMachineDiskFromImage{
+					ImageLibrary: "two-images",
+					ImageFile:    "talos.iso",
+				},
+			},
+		}
+	}
+
+	doc := newVirtualMachine("two-cdroms")
+	doc.DisksConfig = []hypervisorcfg.VirtualMachineDisk{
+		cdrom("install", hypervisorhelpers.VirtualMachineDiskBusSATA),
+		cdrom("rescue", hypervisorhelpers.VirtualMachineDiskBusSCSI),
+	}
+
+	cfg, err := container.New(doc)
+	suite.Require().NoError(err)
+	suite.Create(config.NewMachineConfig(cfg))
+
+	ctest.AssertResource(suite, doc.Name(), func(res *hypervisor.VirtualMachineDomainSpec, asrt *assert.Assertions) {
+		asrt.Contains(res.TypedSpec().DomainXML, `<target dev="sda" bus="sata"></target>`)
+		asrt.Contains(res.TypedSpec().DomainXML, `<target dev="sdb" bus="scsi"></target>`)
+	})
+}
+
+// libvirt has no nvme disk bus, so the domain is refused rather than rendered unusably.
+func (suite *VirtualMachineSpecSuite) TestRejectsNVMeBus() {
+	path := suite.T().TempDir()
+	suite.Require().NoError(os.WriteFile(filepath.Join(path, "talos.iso"), []byte("iso"), 0o600))
+
+	library := hypervisor.NewContentLibraryStatus(hypervisor.NamespaceName, "nvme-images")
+	*library.TypedSpec() = hypervisor.ContentLibraryStatusSpec{VolumeID: "u-nvme-images", Path: path, Ready: true}
+	suite.Create(library)
+
+	doc := newVirtualMachine("nvme-cdrom")
+	doc.DisksConfig = []hypervisorcfg.VirtualMachineDisk{
+		{
+			DiskName: "install",
+			DiskType: hypervisorhelpers.VirtualMachineDiskTypeCDROM,
+			DiskBus:  hypervisorhelpers.VirtualMachineDiskBusNVMe,
+			ProvisionConfig: hypervisorcfg.VirtualMachineDiskProvision{
+				FromImageConfig: &hypervisorcfg.VirtualMachineDiskFromImage{
+					ImageLibrary: "nvme-images",
+					ImageFile:    "talos.iso",
+				},
+			},
+		},
+	}
+
+	cfg, err := container.New(doc)
+	suite.Require().NoError(err)
+	suite.Create(config.NewMachineConfig(cfg))
+
+	suite.assertConversionError(doc.Name(), `disk "install": unsupported bus "nvme"`)
+	ctest.AssertNoResource[*hypervisor.VirtualMachineDomainSpec](suite, doc.Name())
 }

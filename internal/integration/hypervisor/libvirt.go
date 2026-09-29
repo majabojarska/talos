@@ -165,6 +165,12 @@ func (suite *LibvirtSuite) assertNoDomain(node, name string) {
 func (suite *LibvirtSuite) assertRunningTransientDomain(node, name string, cpus uint) {
 	suite.T().Helper()
 
+	suite.assertRunningTransientDomainWithDisks(node, name, cpus, 0)
+}
+
+func (suite *LibvirtSuite) assertRunningTransientDomainWithDisks(node, name string, cpus uint, disks int) {
+	suite.T().Helper()
+
 	suite.assertVirtualMachineStatus(client.WithNode(suite.ctx, node), name, hypervisor.VirtualMachinePowerStateRunning)
 
 	// The status contract does not include XML or persistence; verify those via libvirt.
@@ -174,7 +180,7 @@ func (suite *LibvirtSuite) assertRunningTransientDomain(node, name string, cpus 
 			return false
 		}
 
-		if !definedDomainMatches(text, name, cpus) {
+		if !definedDomainMatches(text, name, cpus, disks) {
 			return false
 		}
 
@@ -184,14 +190,14 @@ func (suite *LibvirtSuite) assertRunningTransientDomain(node, name string, cpus 
 	}, 2*time.Minute, time.Second, "domain %q was not running transiently with %d CPUs", name, cpus)
 }
 
-func definedDomainMatches(text, name string, cpus uint) bool {
+func definedDomainMatches(text, name string, cpus uint, disks int) bool {
 	var domain libvirtxml.Domain
 
 	if err := domain.Unmarshal(text); err != nil || domain.Name != name || domain.VCPU == nil || domain.VCPU.Value != cpus {
 		return false
 	}
 
-	return domain.Devices != nil && len(domain.Devices.Disks) == 0 && len(domain.Devices.Interfaces) == 0
+	return domain.Devices != nil && len(domain.Devices.Disks) == disks && len(domain.Devices.Interfaces) == 0
 }
 
 // TestDomain verifies libvirt can run a QEMU domain and save it across a reboot.

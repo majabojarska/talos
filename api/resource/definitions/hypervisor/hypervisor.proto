@@ -73,6 +73,28 @@ message VirtualMachineDiskSpec {
   VirtualMachineDiskProvisionSpec provision = 8;
 }
 
+// VirtualMachineDiskStatusSpec is the spec for VirtualMachineDiskStatus.
+message VirtualMachineDiskStatusSpec {
+  // VirtualMachine is the name of the virtual machine the disk belongs to.
+  string virtual_machine = 1;
+  // Name is the disk's name within that virtual machine.
+  string name = 2;
+  // SourcePath is the absolute host path libvirt opens.
+  //
+  // Only meaningful when Ready.
+  string source_path = 3;
+  // Format is the on-host format of SourcePath, as libvirt's disk driver type.
+  //
+  // Only meaningful when Ready.
+  string format = 4;
+  // ReadOnly is true when the guest must not write to the source.
+  bool read_only = 5;
+  // Ready is true once the source exists and may be attached.
+  bool ready = 6;
+  // Error describes why the disk is not ready.
+  string error = 7;
+}
+
 // VirtualMachineDomainSpecSpec is the spec for VirtualMachineDomainSpec.
 message VirtualMachineDomainSpecSpec {
   // DomainXML is the libvirt domain description used to start the guest.

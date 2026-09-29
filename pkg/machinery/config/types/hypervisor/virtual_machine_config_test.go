@@ -91,7 +91,6 @@ func TestVirtualMachineConfigMarshalUnmarshal(t *testing.T) {
 					},
 					{
 						DiskName:      "install",
-						DiskPool:      "pool1",
 						DiskType:      hypervisorhelpers.VirtualMachineDiskTypeCDROM,
 						DiskBootOrder: 2,
 						ProvisionConfig: hypervisor.VirtualMachineDiskProvision{
@@ -422,22 +421,44 @@ func TestVirtualMachineConfigValidate(t *testing.T) {
 			name: "linked clone on a cdrom",
 			cfg: func() *hypervisor.VirtualMachineConfigV1Alpha1 {
 				c := validVirtualMachineConfig()
-				c.DisksConfig = []hypervisor.VirtualMachineDisk{imageDisk("install")}
-				c.DisksConfig[0].DiskType = hypervisorhelpers.VirtualMachineDiskTypeCDROM
-				c.DisksConfig[0].DiskSize = meta.ByteSize{}
+				c.DisksConfig = []hypervisor.VirtualMachineDisk{cdromDisk()}
 				c.DisksConfig[0].ProvisionConfig.FromImageConfig.ImageMode = hypervisorhelpers.VirtualMachineDiskImageModeLinked
 
 				return c
 			},
 
-			expectedErrors: "disks[0]: provision.fromImage.mode: linked is not allowed on a cdrom, which has no backing chain of its own",
+			expectedErrors: "disks[0]: provision.fromImage.mode is not allowed on a cdrom, whose read-only medium never diverges from the image",
+		},
+		{
+			name: "copy mode on a cdrom",
+			cfg: func() *hypervisor.VirtualMachineConfigV1Alpha1 {
+				c := validVirtualMachineConfig()
+				c.DisksConfig = []hypervisor.VirtualMachineDisk{cdromDisk()}
+				c.DisksConfig[0].ProvisionConfig.FromImageConfig.ImageMode = hypervisorhelpers.VirtualMachineDiskImageModeCopy
+
+				return c
+			},
+
+			expectedErrors: "disks[0]: provision.fromImage.mode is not allowed on a cdrom, whose read-only medium never diverges from the image",
+		},
+		{
+			name: "pooled cdrom",
+			cfg: func() *hypervisor.VirtualMachineConfigV1Alpha1 {
+				c := validVirtualMachineConfig()
+				c.DisksConfig = []hypervisor.VirtualMachineDisk{cdromDisk()}
+				c.DisksConfig[0].DiskPool = "pool1"
+
+				return c
+			},
+
+			expectedErrors: "disks[0]: pool is not allowed on a cdrom, whose image is attached in place from its content library",
 		},
 		{
 			name: "sized cdrom",
 			cfg: func() *hypervisor.VirtualMachineConfigV1Alpha1 {
 				c := validVirtualMachineConfig()
-				c.DisksConfig = []hypervisor.VirtualMachineDisk{imageDisk("install")}
-				c.DisksConfig[0].DiskType = hypervisorhelpers.VirtualMachineDiskTypeCDROM
+				c.DisksConfig = []hypervisor.VirtualMachineDisk{cdromDisk()}
+				c.DisksConfig[0].DiskSize = meta.MustByteSize("20GiB")
 
 				return c
 			},
@@ -448,9 +469,7 @@ func TestVirtualMachineConfigValidate(t *testing.T) {
 			name: "virtio cdrom",
 			cfg: func() *hypervisor.VirtualMachineConfigV1Alpha1 {
 				c := validVirtualMachineConfig()
-				c.DisksConfig = []hypervisor.VirtualMachineDisk{imageDisk("install")}
-				c.DisksConfig[0].DiskType = hypervisorhelpers.VirtualMachineDiskTypeCDROM
-				c.DisksConfig[0].DiskSize = meta.ByteSize{}
+				c.DisksConfig = []hypervisor.VirtualMachineDisk{cdromDisk()}
 				c.DisksConfig[0].DiskBus = hypervisorhelpers.VirtualMachineDiskBusVirtio
 
 				return c
@@ -464,6 +483,7 @@ func TestVirtualMachineConfigValidate(t *testing.T) {
 				c := validVirtualMachineConfig()
 				c.DisksConfig = []hypervisor.VirtualMachineDisk{blankDisk("install")}
 				c.DisksConfig[0].DiskType = hypervisorhelpers.VirtualMachineDiskTypeCDROM
+				c.DisksConfig[0].DiskPool = ""
 				c.DisksConfig[0].DiskSize = meta.ByteSize{}
 
 				return c
@@ -1031,6 +1051,21 @@ func blankDisk(name string) hypervisor.VirtualMachineDisk {
 		DiskSize: meta.MustByteSize("20GiB"),
 		ProvisionConfig: hypervisor.VirtualMachineDiskProvision{
 			BlankConfig: &hypervisor.VirtualMachineDiskBlank{},
+		},
+	}
+}
+
+// cdromDisk is a valid cdrom: attached in place from a content library, so it carries neither a
+// pool nor a size nor a mode.
+func cdromDisk() hypervisor.VirtualMachineDisk {
+	return hypervisor.VirtualMachineDisk{
+		DiskName: "install",
+		DiskType: hypervisorhelpers.VirtualMachineDiskTypeCDROM,
+		ProvisionConfig: hypervisor.VirtualMachineDiskProvision{
+			FromImageConfig: &hypervisor.VirtualMachineDiskFromImage{
+				ImageLibrary: "images",
+				ImageFile:    "talos.iso",
+			},
 		},
 	}
 }

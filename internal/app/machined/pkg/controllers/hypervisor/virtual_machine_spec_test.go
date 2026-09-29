@@ -124,6 +124,7 @@ func TestVirtualMachineSpecSuite(t *testing.T) {
 		Logger:  zap.New(core),
 		AfterSetup: func(suite *ctest.DefaultSuite) {
 			suite.Require().NoError(suite.Runtime().RegisterController(&hypervisorctrl.VirtualMachineSpecController{}))
+			suite.Require().NoError(suite.Runtime().RegisterController(&hypervisorctrl.VirtualMachineDiskController{}))
 			suite.Require().NoError(suite.Runtime().RegisterController(&hypervisorctrl.VirtualMachineDomainSpecController{}))
 		},
 		logs: logs,
@@ -281,7 +282,7 @@ func (suite *VirtualMachineSpecSuite) TestRejectsUnresolvedDisks() {
 	ctest.AssertResource(suite, doc.Name(), func(res *hypervisor.VirtualMachineSpec, asrt *assert.Assertions) {
 		asrt.Equal("pool1", res.TypedSpec().Disks[0].Pool)
 	})
-	suite.assertConversionError(doc.Name(), "unresolved disks")
+	suite.assertConversionError(doc.Name(), `disk "data" is not ready`)
 	ctest.AssertNoResource[*hypervisor.VirtualMachineDomainSpec](suite, doc.Name())
 }
 
@@ -463,7 +464,7 @@ func (suite *VirtualMachineSpecSuite) TestIgnoresPersistentConfigButRejectsUnres
 	cfg, err := container.New(doc)
 	suite.Require().NoError(err)
 	suite.Create(config.NewMachineConfig(cfg))
-	suite.assertConversionError(doc.Name(), "unresolved disks")
+	suite.assertConversionError(doc.Name(), `disk "deferred" is not ready`)
 	ctest.AssertNoResource[*hypervisor.VirtualMachineDomainSpec](suite, doc.Name())
 	ctest.AssertNoResource[*hypervisor.VirtualMachineDomainSpec](suite, "staged-only")
 }

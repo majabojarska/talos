@@ -18,6 +18,7 @@ import (
 	"github.com/siderolabs/talos/internal/app/machined/pkg/controllers/ctest"
 	hypervisorctrl "github.com/siderolabs/talos/internal/app/machined/pkg/controllers/hypervisor"
 	libvirtdomain "github.com/siderolabs/talos/internal/pkg/libvirt/domain"
+	"github.com/siderolabs/talos/pkg/machinery/hypervisorhelpers"
 	"github.com/siderolabs/talos/pkg/machinery/nethelpers"
 	"github.com/siderolabs/talos/pkg/machinery/resources/hardware"
 	"github.com/siderolabs/talos/pkg/machinery/resources/hypervisor"
@@ -405,6 +406,34 @@ func (s *VirtualMachineStatusSuite) TestUnresolvedLinkExplainsUndefinedDomain() 
 
 	s.assertStatus("vm1", "unknown", hypervisor.VirtualMachineStagePending,
 		`virtual machine "vm1": interface "net0": host link not found: "uplink"`)
+}
+
+// A disk whose status has not been published yet is the same kind of obstacle as a link the host
+// has not brought up: worth waiting for, not a config error.
+func (s *VirtualMachineStatusSuite) TestUnresolvedDiskHoldsBackReadiness() {
+	name := "vm1"
+	s.client.domains[name] = libvirtdomain.Domain{Name: name, UUID: libvirtdomain.UUID(uuid.MustParse(machineUUID), name)}
+
+	spec := newRenderableSpec(name, "running")
+	spec.TypedSpec().Disks = []hypervisor.VirtualMachineDiskSpec{{
+		Name: "install",
+		Bus:  hypervisorhelpers.VirtualMachineDiskBusVirtio.String(),
+	}}
+	s.Create(spec)
+	s.start()
+
+	s.assertStatus(name, "running", hypervisor.VirtualMachineStagePending,
+		`virtual machine "vm1": disk "install" is not ready: no disk status yet`)
+
+	status := hypervisor.NewVirtualMachineDiskStatus(hypervisor.NamespaceName, hypervisor.VirtualMachineDiskStatusID(name, "install"))
+	status.TypedSpec().VirtualMachine = name
+	status.TypedSpec().Name = "install"
+	status.TypedSpec().SourcePath = "/var/lib/libvirt/images/vm1-install.qcow2"
+	status.TypedSpec().Format = "qcow2"
+	status.TypedSpec().Ready = true
+	s.Create(status)
+
+	s.assertStatus(name, "running", hypervisor.VirtualMachineStageReady, "")
 }
 
 // A link of the wrong type is not something to wait for: the config has to change, so the stage

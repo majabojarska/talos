@@ -37,6 +37,7 @@ func (*VirtualMachineStatusController) Name() string {
 func (*VirtualMachineStatusController) Inputs() []controller.Input {
 	return []controller.Input{
 		{Namespace: hypervisor.NamespaceName, Type: hypervisor.VirtualMachineSpecType, Kind: controller.InputWeak},
+		{Namespace: hypervisor.NamespaceName, Type: hypervisor.VirtualMachineDiskStatusType, Kind: controller.InputWeak},
 		{Namespace: hypervisor.NamespaceName, Type: hypervisor.VirtualMachineDomainStatusType, Kind: controller.InputWeak},
 		{Namespace: hardware.NamespaceName, Type: hardware.SystemInformationType, Kind: controller.InputWeak},
 		{Namespace: network.NamespaceName, Type: network.LinkStatusType, Kind: controller.InputWeak},
@@ -100,6 +101,11 @@ func (ctrl *VirtualMachineStatusController) reconcile(ctx context.Context, runti
 
 	links := newHostLinks(linkStatuses)
 
+	resolvedDisks, err := listResolvedDisks(ctx, runtime)
+	if err != nil {
+		return err
+	}
+
 	machineUUID, machineErr := getMachineUUID(ctx, runtime)
 
 	var errs error
@@ -111,7 +117,7 @@ func (ctrl *VirtualMachineStatusController) reconcile(ctx context.Context, runti
 		// render, so an observed domain is on its way out: that obstacle outranks its apparent
 		// readiness. Rendering here rather than reading the obstacle off the domain spec keeps
 		// the reason legible even before a domain spec exists.
-		_, renderErr := renderVirtualMachineDomain(name, spec.TypedSpec(), links)
+		_, renderErr := renderVirtualMachineDomain(name, spec.TypedSpec(), links, resolvedDisks)
 
 		status := composeVirtualMachineStatus(spec.TypedSpec().PowerState, name, machineUUID, machineErr, renderErr, byName[name])
 
@@ -133,7 +139,7 @@ func (ctrl *VirtualMachineStatusController) reconcile(ctx context.Context, runti
 // renderStage grades a spec that cannot be rendered: a link the host has not brought up yet is
 // worth waiting for, anything else needs the config changed.
 func renderStage(err error) hypervisor.VirtualMachineStage {
-	if errors.Is(err, errLinkNotFound) {
+	if errors.Is(err, errLinkNotFound) || errors.Is(err, errDiskNotReady) {
 		return hypervisor.VirtualMachineStagePending
 	}
 

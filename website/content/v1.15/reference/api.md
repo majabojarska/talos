@@ -511,6 +511,7 @@ description: Talos gRPC API reference.
     - [VirtualMachineDiskFromImageSpec](#talos.resource.definitions.hypervisor.VirtualMachineDiskFromImageSpec)
     - [VirtualMachineDiskProvisionSpec](#talos.resource.definitions.hypervisor.VirtualMachineDiskProvisionSpec)
     - [VirtualMachineDiskSpec](#talos.resource.definitions.hypervisor.VirtualMachineDiskSpec)
+    - [VirtualMachineDiskStatusSpec](#talos.resource.definitions.hypervisor.VirtualMachineDiskStatusSpec)
     - [VirtualMachineDomainSpecSpec](#talos.resource.definitions.hypervisor.VirtualMachineDomainSpecSpec)
     - [VirtualMachineDomainStatusSpec](#talos.resource.definitions.hypervisor.VirtualMachineDomainStatusSpec)
     - [VirtualMachineFirmwareSpec](#talos.resource.definitions.hypervisor.VirtualMachineFirmwareSpec)
@@ -8998,6 +8999,27 @@ VirtualMachineDiskSpec describes a disk before its volume has a host source.
 | type | [string](#string) |  |  |
 | boot_order | [uint32](#uint32) |  |  |
 | provision | [VirtualMachineDiskProvisionSpec](#talos.resource.definitions.hypervisor.VirtualMachineDiskProvisionSpec) |  |  |
+
+
+
+
+
+
+<a name="talos.resource.definitions.hypervisor.VirtualMachineDiskStatusSpec"></a>
+
+### VirtualMachineDiskStatusSpec
+VirtualMachineDiskStatusSpec is the spec for VirtualMachineDiskStatus.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| virtual_machine | [string](#string) |  | VirtualMachine is the name of the virtual machine the disk belongs to. |
+| name | [string](#string) |  | Name is the disk's name within that virtual machine. |
+| source_path | [string](#string) |  | SourcePath is the absolute host path libvirt opens.<br><br>Only meaningful when Ready. |
+| format | [string](#string) |  | Format is the on-host format of SourcePath, as libvirt's disk driver type.<br><br>Only meaningful when Ready. |
+| read_only | [bool](#bool) |  | ReadOnly is true when the guest must not write to the source. |
+| ready | [bool](#bool) |  | Ready is true once the source exists and may be attached. |
+| error | [string](#string) |  | Error describes why the disk is not ready. |
 
 
 

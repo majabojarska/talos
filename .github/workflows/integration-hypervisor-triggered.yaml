@@ -94,7 +94,7 @@ jobs:
           make installer-with-extensions
       - name: e2e-hypervisor
         env:
-          EXTRA_TEST_ARGS: -talos.extensions.libvirt
+          EXTRA_TEST_ARGS: -talos.extensions.libvirt -talos.hypervisor.iso=_out/metal-amd64.iso
           GITHUB_STEP_NAME: ${{ github.job}}-e2e-hypervisor
           IMAGE_REGISTRY: registry.dev.siderolabs.io
           QEMU_CONTROLPLANES: "2"
