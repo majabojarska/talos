@@ -319,7 +319,7 @@ VirtualMachineDisk describes a single disk attached to a virtual machine.
 | Field | Type | Description | Value(s) |
 |-------|------|-------------|----------|
 |`name` |string |Name of the disk, unique within the virtual machine.<br><br>Must be between 1 and 63 characters long, and can only contain ASCII letters,<br>digits and hyphens. It names the volume created in the storage pool.  | |
-|`pool` |string |Name of the `StoragePool` document this disk's volume lives in.<br><br>The pool is declared separately and is not provisioned by this document. The reference<br>is checked for shape only: nothing resolves it against the rest of the machine<br>configuration yet.<br><br>Required for a `disk`, and not allowed on a `cdrom`, whose image is attached in place<br>from its content library and never lands in a pool. <details><summary>Show example(s)</summary>{{< highlight yaml >}}
+|`pool` |string |Name of the `StoragePool` document this disk's volume lives in.<br><br>The pool is declared separately and is not provisioned by this document; a pool no<br>`StoragePool` document declares is rejected.<br><br>Required for a `disk`, and not allowed on a `cdrom`, whose image is attached in place<br>from its content library and never lands in a pool. <details><summary>Show example(s)</summary>{{< highlight yaml >}}
 pool: pool1
 {{< /highlight >}}</details> | |
 |`size` |ByteSize |Size of the volume.<br><br>Size is specified in bytes, but can be expressed in human readable format, e.g. 20GiB.<br><br>Required for a `disk`, and not allowed on a `cdrom`, whose size is that of its image.  | |

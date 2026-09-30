@@ -90,17 +90,30 @@ type Pool struct {
 	Target string
 }
 
+// Volume is a file-backed volume requested within a pool.
+type Volume struct {
+	Name string
+	// Capacity is the volume's virtual size in bytes.
+	Capacity uint64
+	// Format is libvirt's volume target format: "raw" or "qcow2".
+	Format string
+}
+
 // Client is a bounded session; callers must Close it after each reconciliation.
 // A fresh connection on each pass avoids retaining poisoned RPC connections.
 type Client interface {
 	Pools() ([]Pool, error)
 	Ensure(Pool, string, func() error) error
+	EnsureVolume(Pool, Volume) (string, error)
 	Remove(Pool) error
 	Stop(Pool) error
 	Close()
 }
 
-type poolRPC interface {
+// storageRPC is the set of libvirt calls this package makes. It deliberately lists no
+// volume delete or resize call: a guest's data outlives its declaration, so there is no
+// code path that can destroy it, by construction rather than by convention.
+type storageRPC interface {
 	ConnectListAllStoragePools(int32, libvirt.ConnectListAllStoragePoolsFlags) ([]libvirt.StoragePool, uint32, error)
 	StoragePoolLookupByName(string) (libvirt.StoragePool, error)
 	StoragePoolGetXMLDesc(libvirt.StoragePool, libvirt.StorageXMLFlags) (string, error)
@@ -111,10 +124,15 @@ type poolRPC interface {
 	StoragePoolDefineXML(string, uint32) (libvirt.StoragePool, error)
 	StoragePoolCreate(libvirt.StoragePool, libvirt.StoragePoolCreateFlags) error
 	StoragePoolUndefine(libvirt.StoragePool) error
+	StoragePoolRefresh(libvirt.StoragePool, uint32) error
+	StorageVolLookupByName(libvirt.StoragePool, string) (libvirt.StorageVol, error)
+	StorageVolGetXMLDesc(libvirt.StorageVol, uint32) (string, error)
+	StorageVolCreateXML(libvirt.StoragePool, string, libvirt.StorageVolCreateFlags) (libvirt.StorageVol, error)
+	StorageVolGetPath(libvirt.StorageVol) (string, error)
 }
 
 type client struct {
-	rpc        poolRPC
+	rpc        storageRPC
 	conn       net.Conn
 	cancel     context.CancelFunc
 	stopClose  func() bool
@@ -235,6 +253,132 @@ func (c *client) Ensure(pool Pool, target string, prepare func() error) error {
 
 	if active == 0 {
 		return c.rpc.StoragePoolCreate(p, 0)
+	}
+
+	return nil
+}
+
+// EnsureVolume creates vol in pool if it is absent and returns its host path.
+//
+// An existing volume is reused exactly as it lies. Nothing here truncates, resizes or
+// reformats: a volume outlives the declaration that asked for it, so a disagreement with
+// the requested capacity or format is reported rather than resolved.
+func (c *client) EnsureVolume(pool Pool, vol Volume) (string, error) {
+	p, exists, err := c.lookup(pool)
+	if err != nil {
+		return "", err
+	}
+
+	if !exists {
+		return "", fmt.Errorf("storage pool %q is not defined", pool.Name)
+	}
+
+	v, found, err := c.volume(p, vol.Name)
+	if err != nil {
+		return "", err
+	}
+
+	if !found {
+		v, err = c.createVolume(p, vol)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if err = c.checkVolume(v, vol); err != nil {
+		return "", err
+	}
+
+	return c.rpc.StorageVolGetPath(v)
+}
+
+func (c *client) volume(p libvirt.StoragePool, name string) (libvirt.StorageVol, bool, error) {
+	v, err := c.rpc.StorageVolLookupByName(p, name)
+	if err != nil {
+		if rpcErr, ok := errors.AsType[libvirt.Error](err); ok && rpcErr.Code == uint32(libvirt.ErrNoStorageVol) {
+			return libvirt.StorageVol{}, false, nil
+		}
+
+		return libvirt.StorageVol{}, false, err
+	}
+
+	return v, true, nil
+}
+
+// createVolume tolerates a volume that exists on disk but not in libvirt's pool cache:
+// a file left by a previous boot is adopted after a refresh rather than failing forever.
+func (c *client) createVolume(p libvirt.StoragePool, vol Volume) (libvirt.StorageVol, error) {
+	desc := libvirtxml.StorageVolume{
+		Type: "file",
+		Name: vol.Name,
+		Capacity: &libvirtxml.StorageVolumeSize{
+			Unit:  "bytes",
+			Value: vol.Capacity,
+		},
+		// Allocate nothing up front. libvirt's directory pool writes out a fully allocated
+		// raw volume when allocation is omitted, which no disk-sized volume can finish
+		// within operationTimeout.
+		Allocation: &libvirtxml.StorageVolumeSize{
+			Unit:  "bytes",
+			Value: 0,
+		},
+		Target: &libvirtxml.StorageVolumeTarget{
+			Format: &libvirtxml.StorageVolumeTargetFormat{
+				Type: vol.Format,
+			},
+		},
+	}
+
+	text, err := desc.Marshal()
+	if err != nil {
+		return libvirt.StorageVol{}, err
+	}
+
+	v, err := c.rpc.StorageVolCreateXML(p, text, 0)
+	if err == nil {
+		return v, nil
+	}
+
+	if rpcErr, ok := errors.AsType[libvirt.Error](err); !ok || rpcErr.Code != uint32(libvirt.ErrStorageVolExist) {
+		return libvirt.StorageVol{}, err
+	}
+
+	if err = c.rpc.StoragePoolRefresh(p, 0); err != nil {
+		return libvirt.StorageVol{}, err
+	}
+
+	v, found, err := c.volume(p, vol.Name)
+	if err != nil {
+		return libvirt.StorageVol{}, err
+	}
+
+	if !found {
+		return libvirt.StorageVol{}, fmt.Errorf("volume %q exists but is absent after a pool refresh", vol.Name)
+	}
+
+	return v, nil
+}
+
+// checkVolume refuses to hand back a volume that is not what was asked for, so a changed
+// declaration surfaces as an error instead of silently attaching the wrong disk.
+func (c *client) checkVolume(v libvirt.StorageVol, want Volume) error {
+	text, err := c.rpc.StorageVolGetXMLDesc(v, 0)
+	if err != nil {
+		return err
+	}
+
+	var desc libvirtxml.StorageVolume
+
+	if err = desc.Unmarshal(text); err != nil {
+		return err
+	}
+
+	if desc.Capacity == nil || desc.Capacity.Value != want.Capacity {
+		return fmt.Errorf("volume %q already exists with a different size; resizing is not supported", want.Name)
+	}
+
+	if desc.Target == nil || desc.Target.Format == nil || desc.Target.Format.Type != want.Format {
+		return fmt.Errorf("volume %q already exists in a different format; reformatting is not supported", want.Name)
 	}
 
 	return nil

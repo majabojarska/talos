@@ -14,6 +14,46 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/config/config"
 )
 
+// sortedVirtualMachineConfigs orders the documents by name, so the same configuration always
+// reports its problems in the same order.
+func sortedVirtualMachineConfigs(container *Container) []config.VirtualMachineConfig {
+	return slices.SortedFunc(slices.Values(container.VirtualMachineConfigs()), func(a, b config.VirtualMachineConfig) int {
+		return cmp.Compare(a.Name(), b.Name())
+	})
+}
+
+// validateVirtualMachinePoolReferences checks the storage pools virtual machine disks are
+// provisioned into.
+func validateVirtualMachinePoolReferences(container *Container) error {
+	declaredPools := map[string]struct{}{}
+
+	for _, storagePoolConfig := range container.StoragePoolConfigs() {
+		declaredPools[storagePoolConfig.Name()] = struct{}{}
+	}
+
+	var errs *multierror.Error
+
+	for _, virtualMachineConfig := range sortedVirtualMachineConfigs(container) {
+		for i, disk := range virtualMachineConfig.Disks() {
+			poolName := disk.Pool()
+
+			if poolName == "" {
+				// A disk that needs a pool and names none is reported by the document's own
+				// validation; a cdrom needs none at all.
+				continue
+			}
+
+			if _, declared := declaredPools[poolName]; !declared {
+				errs = multierror.Append(errs, fmt.Errorf(
+					"virtual machine %q: disks[%d]: no StoragePool declares storage pool %q",
+					virtualMachineConfig.Name(), i, poolName))
+			}
+		}
+	}
+
+	return errs.ErrorOrNil()
+}
+
 // validateVirtualMachineImageReferences checks the content libraries virtual machine disks are
 // provisioned from.
 func validateVirtualMachineImageReferences(container *Container) error {
@@ -23,10 +63,7 @@ func validateVirtualMachineImageReferences(container *Container) error {
 		return nil
 	}
 
-	// Sorted by name, so the same configuration always reports its problems in the same order.
-	sorted := slices.SortedFunc(slices.Values(configs), func(a, b config.VirtualMachineConfig) int {
-		return cmp.Compare(a.Name(), b.Name())
-	})
+	sorted := sortedVirtualMachineConfigs(container)
 
 	declaredLibraries := map[string]struct{}{}
 

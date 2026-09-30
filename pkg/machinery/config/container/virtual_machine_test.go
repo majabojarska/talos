@@ -14,6 +14,8 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/config/container"
 	hypervisorcfg "github.com/siderolabs/talos/pkg/machinery/config/types/hypervisor"
 	"github.com/siderolabs/talos/pkg/machinery/config/types/meta"
+	storagecfg "github.com/siderolabs/talos/pkg/machinery/config/types/storage"
+	"github.com/siderolabs/talos/pkg/machinery/hypervisorhelpers"
 )
 
 // newVirtualMachineDoc builds a VirtualMachineConfig document whose disks are provisioned from the
@@ -24,19 +26,29 @@ func newVirtualMachineDoc(name string, libraryNames ...string) *hypervisorcfg.Vi
 	doc.CPUConfig.CPUCount = 1
 	doc.MemoryConfig.MemorySize = meta.MustByteSize("1GiB")
 
+	// Cdroms, so this fixture references content libraries and no storage pool at all: a pool
+	// reference is checked separately and would be noise here.
 	for i, libraryName := range libraryNames {
 		doc.DisksConfig = append(doc.DisksConfig, hypervisorcfg.VirtualMachineDisk{
 			DiskName: "disk" + string(rune('a'+i)),
-			DiskPool: "pool1",
-			DiskSize: meta.MustByteSize("20GiB"),
+			DiskType: hypervisorhelpers.VirtualMachineDiskTypeCDROM,
 			ProvisionConfig: hypervisorcfg.VirtualMachineDiskProvision{
 				FromImageConfig: &hypervisorcfg.VirtualMachineDiskFromImage{
 					ImageLibrary: libraryName,
-					ImageFile:    "talos.qcow2",
+					ImageFile:    "talos.iso",
 				},
 			},
 		})
 	}
+
+	return doc
+}
+
+// newStoragePoolDoc builds a StoragePool backed by the named volume.
+func newStoragePoolDoc(name, volumeName string) *storagecfg.StoragePoolV1Alpha1 {
+	doc := storagecfg.NewStoragePoolV1Alpha1()
+	doc.MetaName = name
+	doc.VolumeConfig.VolumeName = volumeName
 
 	return doc
 }
@@ -80,6 +92,8 @@ func TestVirtualMachineImageReferences(t *testing.T) {
 		{
 			name: "no library referenced",
 			docs: []config.Document{
+				newUserVolumeDoc("vm-images"),
+				newStoragePoolDoc("pool1", "vm-images"),
 				newBlankDiskVirtualMachineDoc("vm1"),
 			},
 		},
@@ -147,6 +161,63 @@ func TestVirtualMachineImageReferences(t *testing.T) {
 			for _, expectedErr := range test.expectedErrs {
 				assert.ErrorContains(t, err, expectedErr)
 			}
+		})
+	}
+}
+
+func TestVirtualMachinePoolReferences(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name        string
+		docs        []config.Document
+		expectedErr string
+	}{
+		{
+			name: "pool declared",
+			docs: []config.Document{
+				newUserVolumeDoc("vm-images"),
+				newStoragePoolDoc("pool1", "vm-images"),
+				newBlankDiskVirtualMachineDoc("vm1"),
+			},
+		},
+		{
+			name: "pool not declared",
+			docs: []config.Document{
+				newBlankDiskVirtualMachineDoc("vm1"),
+			},
+			expectedErr: `virtual machine "vm1": disks[0]: no StoragePool declares storage pool "pool1"`,
+		},
+		{
+			// A cdrom names no pool, so it must not be asked to resolve one.
+			name: "cdrom needs no pool",
+			docs: []config.Document{
+				newUserVolumeDoc("vm-images"),
+				newContentLibraryDoc("images", "vm-images"),
+				newVirtualMachineDoc("vm1", "images"),
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctr, err := container.New(test.docs...)
+			require.NoError(t, err)
+
+			_, err = ctr.ValidateAsClient(validationMode{})
+
+			if test.expectedErr == "" {
+				if err != nil {
+					// The bare volume documents fail their own validation, which is not what this
+					// test is about.
+					assert.NotContains(t, err.Error(), "no StoragePool declares")
+				}
+
+				return
+			}
+
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), test.expectedErr)
 		})
 	}
 }

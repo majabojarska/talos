@@ -91,6 +91,12 @@ func (c *poolClient) Pools() ([]libvirtstorage.Pool, error) {
 	return slices.Clone(c.pools), nil
 }
 
+// EnsureVolume is unused here: this suite covers pools, and volumes belong to the
+// hypervisor disk controller.
+func (c *poolClient) EnsureVolume(libvirtstorage.Pool, libvirtstorage.Volume) (string, error) {
+	return "", errors.New("unexpected volume operation")
+}
+
 func (c *poolClient) Ensure(p libvirtstorage.Pool, target string, prepare func() error) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()

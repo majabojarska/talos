@@ -40,13 +40,92 @@ func TestUUID(t *testing.T) {
 }
 
 type rpc struct {
-	pools       []libvirt.StoragePool
-	calls       []string
-	target      string
-	description string
-	lookupErr   error
-	listCalls   int
-	active      bool
+	pools        []libvirt.StoragePool
+	vols         map[string]string
+	refreshAdds  map[string]string
+	calls        []string
+	target       string
+	description  string
+	lookupErr    error
+	createVolErr error
+	listCalls    int
+	active       bool
+}
+
+// StoragePoolRefresh makes files that exist on disk but not in the pool cache visible,
+// which is what refreshAdds models.
+func (r *rpc) StoragePoolRefresh(libvirt.StoragePool, uint32) error {
+	r.calls = append(r.calls, "refreshPool")
+
+	for name, text := range r.refreshAdds {
+		r.defineVol(name, text)
+	}
+
+	r.refreshAdds = nil
+
+	return nil
+}
+
+func (r *rpc) StorageVolLookupByName(_ libvirt.StoragePool, name string) (libvirt.StorageVol, error) {
+	if _, ok := r.vols[name]; !ok {
+		return libvirt.StorageVol{}, libvirt.Error{Code: uint32(libvirt.ErrNoStorageVol), Message: "volume not found"}
+	}
+
+	return libvirt.StorageVol{Name: name}, nil
+}
+
+func (r *rpc) StorageVolGetXMLDesc(v libvirt.StorageVol, _ uint32) (string, error) {
+	return r.vols[v.Name], nil
+}
+
+func (r *rpc) StorageVolCreateXML(_ libvirt.StoragePool, text string, _ libvirt.StorageVolCreateFlags) (libvirt.StorageVol, error) {
+	r.calls = append(r.calls, "createVol")
+
+	if r.createVolErr != nil {
+		err := r.createVolErr
+		r.createVolErr = nil
+
+		return libvirt.StorageVol{}, err
+	}
+
+	var desc libvirtxml.StorageVolume
+	if err := desc.Unmarshal(text); err != nil {
+		return libvirt.StorageVol{}, err
+	}
+
+	r.defineVol(desc.Name, text)
+
+	return libvirt.StorageVol{Name: desc.Name}, nil
+}
+
+func (r *rpc) StorageVolGetPath(v libvirt.StorageVol) (string, error) {
+	return "/pools/images/" + v.Name, nil
+}
+
+func (r *rpc) defineVol(name, text string) {
+	if r.vols == nil {
+		r.vols = map[string]string{}
+	}
+
+	r.vols[name] = text
+}
+
+// volumeXML renders what libvirt would report back for an existing volume.
+func volumeXML(t *testing.T, name string, capacity uint64, format string) string {
+	t.Helper()
+
+	desc := &libvirtxml.StorageVolume{
+		Type:       "file",
+		Name:       name,
+		Capacity:   &libvirtxml.StorageVolumeSize{Unit: "bytes", Value: capacity},
+		Allocation: &libvirtxml.StorageVolumeSize{Unit: "bytes", Value: 0},
+		Target:     &libvirtxml.StorageVolumeTarget{Format: &libvirtxml.StorageVolumeTargetFormat{Type: format}},
+	}
+
+	text, err := desc.Marshal()
+	require.NoError(t, err)
+
+	return text
 }
 
 func (r *rpc) ConnectListAllStoragePools(int32, libvirt.ConnectListAllStoragePoolsFlags) ([]libvirt.StoragePool, uint32, error) {
@@ -160,6 +239,112 @@ func TestPersistentPoolLifecycle(t *testing.T) {
 	require.NoError(t, client.Remove(pool), "already absent removal is idempotent")
 	require.NoError(t, client.Stop(pool), "already absent stop is idempotent")
 	require.Zero(t, rpc.listCalls, "named pool operations must not enumerate unrelated pools")
+}
+
+const gibibyte = 1 << 30
+
+// volumePool seeds an rpc with one owned pool and returns it alongside the pool identity.
+func volumePool(t *testing.T) (*rpc, libvirtstorage.Pool) {
+	t.Helper()
+
+	id := libvirtstorage.UUID(uuid.MustParse(machine), "images")
+	pool := libvirtstorage.Pool{Name: "images", UUID: id}
+
+	return &rpc{pools: []libvirt.StoragePool{{Name: "images", UUID: libvirt.UUID(id)}}}, pool
+}
+
+func TestVolumeLifecycle(t *testing.T) {
+	t.Parallel()
+
+	rpc, pool := volumePool(t)
+	client := libvirtstorage.NewTestClient(rpc)
+	vol := libvirtstorage.Volume{Name: "vm1.data", Capacity: 20 * gibibyte, Format: "qcow2"}
+
+	path, err := client.EnsureVolume(pool, vol)
+	require.NoError(t, err)
+	require.Equal(t, "/pools/images/vm1.data", path)
+	require.Equal(t, []string{"createVol"}, rpc.calls)
+
+	// Allocating up front would make any disk-sized volume exceed the session timeout.
+	require.Contains(t, rpc.vols["vm1.data"], "<allocation unit=\"bytes\">0</allocation>")
+	require.Contains(t, rpc.vols["vm1.data"], "<capacity unit=\"bytes\">21474836480</capacity>")
+	require.Contains(t, rpc.vols["vm1.data"], "<format type=\"qcow2\"></format>")
+	rpc.calls = nil
+
+	path, err = client.EnsureVolume(pool, vol)
+	require.NoError(t, err)
+	require.Equal(t, "/pools/images/vm1.data", path)
+	require.Empty(t, rpc.calls, "reapply must not recreate an existing volume")
+}
+
+func TestVolumeMismatchIsReportedNotRewritten(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name     string
+		existing string
+		want     string
+	}{
+		{name: "size", existing: volumeXMLFor(t, 10*gibibyte, "qcow2"), want: "resizing is not supported"},
+		{name: "format", existing: volumeXMLFor(t, 20*gibibyte, "raw"), want: "reformatting is not supported"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			rpc, pool := volumePool(t)
+			rpc.defineVol("vm1.data", test.existing)
+			client := libvirtstorage.NewTestClient(rpc)
+
+			_, err := client.EnsureVolume(pool, libvirtstorage.Volume{Name: "vm1.data", Capacity: 20 * gibibyte, Format: "qcow2"})
+			require.ErrorContains(t, err, test.want)
+			require.Empty(t, rpc.calls, "a mismatch must never rewrite the volume")
+		})
+	}
+}
+
+// A file left by a previous boot is absent from the pool cache until it is refreshed.
+func TestVolumeAdoptedAfterRefresh(t *testing.T) {
+	t.Parallel()
+
+	rpc, pool := volumePool(t)
+	rpc.createVolErr = libvirt.Error{Code: uint32(libvirt.ErrStorageVolExist), Message: "volume exists"}
+	client := libvirtstorage.NewTestClient(rpc)
+
+	// The stale file is on disk but invisible until the pool cache is refreshed.
+	rpc.refreshAdds = map[string]string{"vm1.data": volumeXMLFor(t, 20*gibibyte, "qcow2")}
+
+	path, err := client.EnsureVolume(pool, libvirtstorage.Volume{Name: "vm1.data", Capacity: 20 * gibibyte, Format: "qcow2"})
+	require.NoError(t, err)
+	require.Equal(t, "/pools/images/vm1.data", path)
+	require.Equal(t, []string{"createVol", "refreshPool"}, rpc.calls)
+}
+
+func TestVolumeOnUnownedPoolRefused(t *testing.T) {
+	t.Parallel()
+
+	rpc, _ := volumePool(t)
+	client := libvirtstorage.NewTestClient(rpc)
+
+	_, err := client.EnsureVolume(libvirtstorage.Pool{Name: "images", UUID: uuid.New()},
+		libvirtstorage.Volume{Name: "vm1.data", Capacity: 20 * gibibyte, Format: "qcow2"})
+	require.ErrorContains(t, err, "not owned by this machine")
+	require.Empty(t, rpc.calls, "an unowned pool must be refused before any volume operation")
+}
+
+func TestVolumeOnUndefinedPoolRefused(t *testing.T) {
+	t.Parallel()
+
+	client := libvirtstorage.NewTestClient(&rpc{})
+
+	_, err := client.EnsureVolume(libvirtstorage.Pool{Name: "images", UUID: uuid.MustParse(machine)},
+		libvirtstorage.Volume{Name: "vm1.data", Capacity: 20 * gibibyte, Format: "qcow2"})
+	require.ErrorContains(t, err, `storage pool "images" is not defined`)
+}
+
+func volumeXMLFor(t *testing.T, capacity uint64, format string) string {
+	t.Helper()
+
+	return volumeXML(t, "vm1.data", capacity, format)
 }
 
 func TestPoolLookupErrors(t *testing.T) {

@@ -94,9 +94,8 @@ type VirtualMachineDisk struct {
 	//   description: |
 	//     Name of the `StoragePool` document this disk's volume lives in.
 	//
-	//     The pool is declared separately and is not provisioned by this document. The reference
-	//     is checked for shape only: nothing resolves it against the rest of the machine
-	//     configuration yet.
+	//     The pool is declared separately and is not provisioned by this document; a pool no
+	//     `StoragePool` document declares is rejected.
 	//
 	//     Required for a `disk`, and not allowed on a `cdrom`, whose image is attached in place
 	//     from its content library and never lands in a pool.

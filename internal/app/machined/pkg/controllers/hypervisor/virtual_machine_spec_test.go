@@ -27,7 +27,9 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/config/types/meta"
 	"github.com/siderolabs/talos/pkg/machinery/hypervisorhelpers"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
+	"github.com/siderolabs/talos/pkg/machinery/resources/hardware"
 	"github.com/siderolabs/talos/pkg/machinery/resources/hypervisor"
+	"github.com/siderolabs/talos/pkg/machinery/resources/storage"
 )
 
 type VirtualMachineProjectionSuite struct {
@@ -124,7 +126,9 @@ func TestVirtualMachineSpecSuite(t *testing.T) {
 		Logger:  zap.New(core),
 		AfterSetup: func(suite *ctest.DefaultSuite) {
 			suite.Require().NoError(suite.Runtime().RegisterController(&hypervisorctrl.VirtualMachineSpecController{}))
-			suite.Require().NoError(suite.Runtime().RegisterController(&hypervisorctrl.VirtualMachineDiskController{}))
+			suite.Require().NoError(suite.Runtime().RegisterController(&hypervisorctrl.VirtualMachineDiskController{
+				Open: (&volumeClient{}).open,
+			}))
 			suite.Require().NoError(suite.Runtime().RegisterController(&hypervisorctrl.VirtualMachineDomainSpecController{}))
 		},
 		logs: logs,
@@ -773,4 +777,63 @@ func (suite *VirtualMachineSpecSuite) replaceConfig(docs ...configcfg.Document) 
 	res := config.NewMachineConfig(cfg)
 	res.Metadata().SetVersion(old.Metadata().Version())
 	suite.Update(res)
+}
+
+// A blank disk is writable: it renders as a plain disk device, with its own format and no
+// readonly element, unlike the cdrom beside it.
+func (suite *VirtualMachineSpecSuite) TestRendersBlankDiskFromStoragePool() {
+	path := suite.T().TempDir()
+	suite.Require().NoError(os.WriteFile(filepath.Join(path, "talos.iso"), []byte("iso"), 0o600))
+
+	library := hypervisor.NewContentLibraryStatus(hypervisor.NamespaceName, "images")
+	*library.TypedSpec() = hypervisor.ContentLibraryStatusSpec{VolumeID: "u-images", Path: path, Ready: true}
+	suite.Create(library)
+
+	info := hardware.NewSystemInformation(hardware.SystemInformationID)
+	info.TypedSpec().UUID = machineUUID
+	suite.Create(info)
+
+	pool := storage.NewStoragePoolStatus(storage.NamespaceName, "pool1")
+	*pool.TypedSpec() = storage.StoragePoolStatusSpec{VolumeID: "u-vms", TargetPath: "/var/mnt/u-vms/pool1", Ready: true}
+	suite.Create(pool)
+
+	doc := newVirtualMachine("installed")
+	doc.DisksConfig = []hypervisorcfg.VirtualMachineDisk{
+		{
+			DiskName:      "install",
+			DiskType:      hypervisorhelpers.VirtualMachineDiskTypeCDROM,
+			DiskBootOrder: 1,
+			ProvisionConfig: hypervisorcfg.VirtualMachineDiskProvision{
+				FromImageConfig: &hypervisorcfg.VirtualMachineDiskFromImage{
+					ImageLibrary: "images",
+					ImageFile:    "talos.iso",
+				},
+			},
+		},
+		{
+			DiskName:      "system",
+			DiskPool:      "pool1",
+			DiskSize:      meta.MustByteSize("8GiB"),
+			DiskFormat:    hypervisorhelpers.VirtualMachineDiskFormatQCOW2,
+			DiskBootOrder: 2,
+			ProvisionConfig: hypervisorcfg.VirtualMachineDiskProvision{
+				BlankConfig: &hypervisorcfg.VirtualMachineDiskBlank{},
+			},
+		},
+	}
+
+	cfg, err := container.New(doc)
+	suite.Require().NoError(err)
+	suite.Create(config.NewMachineConfig(cfg))
+
+	want, err := os.ReadFile(filepath.Join("testdata", "virtualmachinespec", "blank-disk.xml"))
+	suite.Require().NoError(err)
+
+	ctest.AssertResource(suite, doc.Name(), func(res *hypervisor.VirtualMachineDomainSpec, asrt *assert.Assertions) {
+		asrt.Equal(string(want), strings.ReplaceAll(res.TypedSpec().DomainXML, path, contentLibraryPlaceholder)+"\n")
+	})
+
+	res, err := safe.StateGetByID[*hypervisor.VirtualMachineDomainSpec](suite.Ctx(), suite.State(), doc.Name())
+	suite.Require().NoError(err)
+	suite.Require().NoError(validateDomainXML([]byte(res.TypedSpec().DomainXML)))
 }

@@ -340,7 +340,7 @@ func (VirtualMachineDisk) Doc() *encoder.Doc {
 				Name:        "pool",
 				Type:        "string",
 				Note:        "",
-				Description: "Name of the `StoragePool` document this disk's volume lives in.\n\nThe pool is declared separately and is not provisioned by this document. The reference\nis checked for shape only: nothing resolves it against the rest of the machine\nconfiguration yet.\n\nRequired for a `disk`, and not allowed on a `cdrom`, whose image is attached in place\nfrom its content library and never lands in a pool.",
+				Description: "Name of the `StoragePool` document this disk's volume lives in.\n\nThe pool is declared separately and is not provisioned by this document; a pool no\n`StoragePool` document declares is rejected.\n\nRequired for a `disk`, and not allowed on a `cdrom`, whose image is attached in place\nfrom its content library and never lands in a pool.",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "Name of the `StoragePool` document this disk's volume lives in." /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
 			{

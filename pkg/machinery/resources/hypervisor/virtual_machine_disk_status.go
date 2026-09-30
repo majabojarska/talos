@@ -52,6 +52,16 @@ func VirtualMachineDiskStatusID(virtualMachine, disk string) resource.ID {
 	return virtualMachine + "/" + disk
 }
 
+// VirtualMachineVolumeName builds the storage pool volume name backing a disk.
+//
+// Both names are validated against ^[A-Za-z0-9-]+$, so the separator cannot occur within
+// either; a hyphen would be ambiguous here. The name is stable across reboots and
+// configuration edits on purpose: a volume is never deleted, so a disk that is removed and
+// declared again must find its data where it left it.
+func VirtualMachineVolumeName(virtualMachine, disk string) string {
+	return virtualMachine + "." + disk
+}
+
 // NewVirtualMachineDiskStatus initializes a VirtualMachineDiskStatus resource.
 func NewVirtualMachineDiskStatus(namespace resource.Namespace, id resource.ID) *VirtualMachineDiskStatus {
 	return typed.NewResource[VirtualMachineDiskStatusSpec, VirtualMachineDiskStatusExtension](
