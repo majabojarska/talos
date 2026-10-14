@@ -17,7 +17,6 @@ import (
 	"go.uber.org/zap"
 
 	configcfg "github.com/siderolabs/talos/pkg/machinery/config/config"
-	"github.com/siderolabs/talos/pkg/machinery/constants"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"github.com/siderolabs/talos/pkg/machinery/resources/containers"
 )
@@ -115,7 +114,7 @@ func (ctrl *ConfigController) reconcile(ctx context.Context, runtime controller.
 				ctx, runtime,
 				containers.NewContainerSpec(containers.NamespaceName, containerSpecID),
 				func(res *containers.ContainerSpec) error {
-					return applyConfig(res.TypedSpec(), containerConfig)
+					return applyConfig(res.TypedSpec(), machineConfig.Config(), containerConfig)
 				},
 			); err != nil {
 				return fmt.Errorf("failed to write container spec %q: %w", containerSpecID, err)
@@ -137,7 +136,9 @@ func (ctrl *ConfigController) reconcile(ctx context.Context, runtime controller.
 }
 
 // applyConfig resolves a ContainerConfig document into a ContainerSpec.
-func applyConfig(containerSpecSpec *containers.ContainerSpecSpec, containerConfig configcfg.ContainerConfig) error {
+//
+// cfg is the whole machine configuration, which volume mounts are resolved against.
+func applyConfig(containerSpecSpec *containers.ContainerSpecSpec, cfg configcfg.Config, containerConfig configcfg.ContainerConfig) error {
 	// Image() already returns the canonical form: normalizing in the config layer rather than
 	// downstream keeps the reference identical to what the pull records, which is what image
 	// garbage collection matches against.
@@ -155,7 +156,7 @@ func applyConfig(containerSpecSpec *containers.ContainerSpecSpec, containerConfi
 
 	containerSpecSpec.Environment = containerConfig.Environment()
 
-	containerMountSpecs, err := resolveMounts(containerConfig.Mounts())
+	containerMountSpecs, err := resolveMounts(cfg, containerConfig.Mounts())
 	if err != nil {
 		return err
 	}
@@ -192,7 +193,12 @@ func applyConfig(containerSpecSpec *containers.ContainerSpecSpec, containerConfi
 }
 
 // resolveMounts turns typed configuration mounts into resolved mount specs.
-func resolveMounts(configMounts []configcfg.ContainerMountConfig) ([]containers.ContainerMountSpec, error) {
+//
+// A volume mount names a user, existing or external volume; names are unique across those kinds, so
+// the name resolves to a single volume ID. Validation rejects a name nothing declares, so an
+// unresolved name only reaches here if validation was bypassed: the volume ID is then left empty,
+// and the container is held back until the volume is declared.
+func resolveMounts(cfg configcfg.Config, configMounts []configcfg.ContainerMountConfig) ([]containers.ContainerMountSpec, error) {
 	if len(configMounts) == 0 {
 		return nil, nil
 	}
@@ -201,15 +207,17 @@ func resolveMounts(configMounts []configcfg.ContainerMountConfig) ([]containers.
 
 	for i, containerMountConfig := range configMounts {
 		switch {
-		case containerMountConfig.UserVolume().IsPresent():
-			userVolume, _ := containerMountConfig.UserVolume().Get()
+		case containerMountConfig.Volume().IsPresent():
+			volume, _ := containerMountConfig.Volume().Get()
+
+			backing, _ := configcfg.ResolveBackingVolume(cfg, volume.Name())
 
 			containerMountSpecs = append(containerMountSpecs, containers.ContainerMountSpec{
-				Kind:        containers.MountKindUserVolume,
-				VolumeID:    constants.UserVolumePrefix + userVolume.Name(), //nolint:staticcheck // backward compatibility
-				VolumeName:  userVolume.Name(),
-				Destination: userVolume.Destination(),
-				Options:     userVolume.MountOptions(),
+				Kind:        containers.MountKindVolume,
+				VolumeID:    backing.ID,
+				VolumeName:  volume.Name(),
+				Destination: volume.Destination(),
+				Options:     volume.MountOptions(),
 			})
 		case containerMountConfig.Tmpfs().IsPresent():
 			tmpfs, _ := containerMountConfig.Tmpfs().Get()

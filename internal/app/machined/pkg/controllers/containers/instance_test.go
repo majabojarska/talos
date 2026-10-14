@@ -530,11 +530,12 @@ func (suite *InstanceSuite) TestGatesOnPath() {
 	suite.assertInstance(0)
 }
 
-func (suite *InstanceSuite) TestUserVolumeMountStaysPending() {
+func (suite *InstanceSuite) TestVolumeMountStaysPending() {
 	suite.createSpec(func(spec *containers.ContainerSpecSpec) {
 		spec.Mounts = []containers.ContainerMountSpec{
 			{
-				Kind:        containers.MountKindUserVolume,
+				Kind:        containers.MountKindVolume,
+				VolumeID:    "u-web-content",
 				VolumeName:  "web-content",
 				Destination: "/usr/share/nginx/html",
 			},
@@ -553,7 +554,8 @@ func (suite *InstanceSuite) TestStartsOnceUserVolumeIsMounted() {
 	suite.createSpec(func(spec *containers.ContainerSpecSpec) {
 		spec.Mounts = []containers.ContainerMountSpec{
 			{
-				Kind:        containers.MountKindUserVolume,
+				Kind:        containers.MountKindVolume,
+				VolumeID:    "u-web-content",
 				VolumeName:  "web-content",
 				Destination: "/usr/share/nginx/html",
 			},
@@ -848,7 +850,7 @@ func (suite *InstanceSuite) TestGatedSpecChangeKeepsInstance() {
 
 // TestGatedSpecChangeKeepsInstanceOnUnresolvableMount is the same case for a gate that never opens.
 //
-// Nothing resolves a userVolume yet, so replacing the instance over this edit would stop the
+// Nothing resolves a volume yet, so replacing the instance over this edit would stop the
 // container permanently rather than briefly.
 func (suite *InstanceSuite) TestGatedSpecChangeKeepsInstanceOnUnresolvableMount() {
 	suite.createSpec()
@@ -860,7 +862,8 @@ func (suite *InstanceSuite) TestGatedSpecChangeKeepsInstanceOnUnresolvableMount(
 		spec.Args = []string{"--verbose"}
 		spec.Mounts = []containers.ContainerMountSpec{
 			{
-				Kind:        containers.MountKindUserVolume,
+				Kind:        containers.MountKindVolume,
+				VolumeID:    "u-web-content",
 				VolumeName:  "web-content",
 				Destination: "/usr/share/nginx/html",
 			},

@@ -282,6 +282,23 @@ The `--kubernetes`/`-k` flag is deprecated in favor of `--namespace cri`.
 `talosctl image list` also supports `--namespace taloscontainers`, to inspect images pulled for `ContainerConfig` containers. `talosctl debug` does not support the `taloscontainers` namespace.
 """
 
+    [notes.container_volume_mounts]
+        title = "ContainerConfig Volume Mounts"
+        description = """\
+**Breaking change:** the `userVolume` mount source of `ContainerConfig` has been renamed to `volume`, and now accepts the name of a `UserVolumeConfig`, `ExistingVolumeConfig` or `ExternalVolumeConfig` document:
+
+```yaml
+mounts:
+  - volume:
+      name: data
+      destination: /data
+```
+
+Configurations which still use `userVolume` are rejected and must be updated.
+
+Volume names are unique across those kinds, so the name resolves to a single volume. A container mounting a volume which is not declared is now rejected when the configuration is applied, instead of waiting for the volume to appear. A volume declared read-only must be mounted with the `ro` option.
+"""
+
     [notes.extension_service_configuration]
         title = "Extension Service Configuration"
         description = """\

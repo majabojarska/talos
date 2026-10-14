@@ -512,11 +512,10 @@ func (x *ContainerInstanceStatusSpec) GetFinishedAt() *timestamppb.Timestamp {
 // Exactly one of VolumeName, Tmpfs or HostPath describes the source; Kind says which.
 type ContainerMountSpec struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Kind is one of "userVolume", "tmpfs" or "hostPath".
+	// Kind is one of "volume", "tmpfs" or "hostPath".
 	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
-	// VolumeID is the block volume ID for a userVolume mount, e.g. "u-web-content".
-	//
-	// Deprecated: use VolumeName. Still populated for compatibility with older clients and nodes.
+	// VolumeID is the block volume ID a volume mount resolved to, e.g. "u-web-content", "e-data" or
+	// "x-nfs"; empty when the volume name resolves to no volume.
 	VolumeId string `protobuf:"bytes,2,opt,name=volume_id,json=volumeId,proto3" json:"volume_id,omitempty"`
 	// Source is the host path for a hostPath mount.
 	Source string `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
@@ -526,7 +525,8 @@ type ContainerMountSpec struct {
 	Size uint64 `protobuf:"varint,5,opt,name=size,proto3" json:"size,omitempty"`
 	// Options with the writable default already applied.
 	Options []string `protobuf:"bytes,6,rep,name=options,proto3" json:"options,omitempty"`
-	// VolumeName is the name of the UserVolumeConfig a userVolume mount refers to, e.g. "web-content".
+	// VolumeName is the name of the user, existing or external volume a volume mount refers to,
+	// e.g. "web-content".
 	VolumeName    string `protobuf:"bytes,7,opt,name=volume_name,json=volumeName,proto3" json:"volume_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1143,16 +1143,15 @@ func (x *ContainerStatusSpec) GetWaitingFor() []string {
 type ResolvedMountSpec struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Kind  string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
-	// Source is the host path to bind from; empty for tmpfs and userVolume.
+	// Source is the host path to bind from; empty for tmpfs.
 	Source      string   `protobuf:"bytes,2,opt,name=source,proto3" json:"source,omitempty"`
 	Destination string   `protobuf:"bytes,3,opt,name=destination,proto3" json:"destination,omitempty"`
 	Size        uint64   `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
 	Options     []string `protobuf:"bytes,5,rep,name=options,proto3" json:"options,omitempty"`
-	// VolumeID is the resolved userVolume's block volume ID; empty for tmpfs and hostPath.
-	//
-	// Deprecated: use VolumeName. Still populated for compatibility with older clients and nodes.
+	// VolumeID is the block volume ID of a volume mount, e.g. "u-web-content"; empty for tmpfs and hostPath.
 	VolumeId string `protobuf:"bytes,6,opt,name=volume_id,json=volumeId,proto3" json:"volume_id,omitempty"`
-	// VolumeName is the name of the UserVolumeConfig a userVolume mount refers to; empty for tmpfs and hostPath.
+	// VolumeName is the name of the user, existing or external volume a volume mount refers to;
+	// empty for tmpfs and hostPath.
 	VolumeName    string `protobuf:"bytes,7,opt,name=volume_name,json=volumeName,proto3" json:"volume_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

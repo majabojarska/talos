@@ -15,6 +15,7 @@ import (
 	"github.com/siderolabs/talos/internal/app/machined/pkg/controllers/ctest"
 	configcfg "github.com/siderolabs/talos/pkg/machinery/config/config"
 	"github.com/siderolabs/talos/pkg/machinery/config/container"
+	blockcfg "github.com/siderolabs/talos/pkg/machinery/config/types/block"
 	containercfg "github.com/siderolabs/talos/pkg/machinery/config/types/container"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"github.com/siderolabs/talos/pkg/machinery/resources/containers"
@@ -35,14 +36,8 @@ func TestConfigSuite(t *testing.T) {
 	})
 }
 
-// applyContainers puts the given ContainerConfig documents into the active machine config.
-func (suite *ConfigSuite) applyContainers(docs ...*containercfg.ContainerConfigV1Alpha1) {
-	documents := make([]configcfg.Document, 0, len(docs))
-
-	for _, doc := range docs {
-		documents = append(documents, doc)
-	}
-
+// applyContainers puts the given documents into the active machine config.
+func (suite *ConfigSuite) applyContainers(documents ...configcfg.Document) {
 	cfg, err := container.New(documents...)
 	suite.Require().NoError(err)
 
@@ -76,7 +71,7 @@ func (suite *ConfigSuite) TestResolvesMounts() {
 	doc := newDoc("director", "ghcr.io/siderolabs/director:v1.0.0")
 	doc.MountsConfig = []containercfg.ContainerMount{
 		{
-			UserVolumeMount: &containercfg.UserVolumeMount{
+			VolumeMount: &containercfg.VolumeMount{
 				VolumeName:       "director-data",
 				MountDestination: "/var/lib/director",
 				MountOpts:        []string{"rw"},
@@ -102,17 +97,20 @@ func (suite *ConfigSuite) TestResolvesMounts() {
 		},
 	}
 
-	suite.applyContainers(doc)
+	userVolume := blockcfg.NewUserVolumeConfigV1Alpha1()
+	userVolume.MetaName = "director-data"
+
+	suite.applyContainers(doc, userVolume)
 
 	ctest.AssertResource(suite, "director", func(spec *containers.ContainerSpec, asrt *assert.Assertions) {
 		mounts := spec.TypedSpec().Mounts
 		asrt.Len(mounts, 4)
 
-		// A user volume resolves to its name, not a host path: the path is only known
+		// A volume resolves to its volume ID, not a host path: the path is only known
 		// once the volume is mounted, which is a different controller's job.
-		asrt.Equal(containers.MountKindUserVolume, mounts[0].Kind)
+		asrt.Equal(containers.MountKindVolume, mounts[0].Kind)
 		asrt.Equal("director-data", mounts[0].VolumeName)
-		asrt.Equal("u-director-data", mounts[0].VolumeID, "deprecated field still populated for older clients") //nolint:staticcheck
+		asrt.Equal("u-director-data", mounts[0].VolumeID)
 		asrt.Empty(mounts[0].Source)
 		asrt.NotContains(mounts[0].Options, "ro")
 
@@ -129,6 +127,52 @@ func (suite *ConfigSuite) TestResolvesMounts() {
 		asrt.Equal("/dev", mounts[3].Source)
 		// Writable by default.
 		asrt.NotContains(mounts[3].Options, "ro")
+	})
+}
+
+// TestResolvesVolumeKinds covers a volume mount naming each kind of volume: the name resolves to the
+// volume ID of whichever kind declares it, and a name nothing declares resolves to no volume ID.
+func (suite *ConfigSuite) TestResolvesVolumeKinds() {
+	doc := newDoc("director", "ghcr.io/siderolabs/director:v1.0.0")
+
+	for _, name := range []string{"user-data", "existing-data", "external-data", "undeclared"} {
+		doc.MountsConfig = append(doc.MountsConfig, containercfg.ContainerMount{
+			VolumeMount: &containercfg.VolumeMount{
+				VolumeName:       name,
+				MountDestination: "/mnt/" + name,
+				MountOpts:        []string{"ro"},
+			},
+		})
+	}
+
+	userVolume := blockcfg.NewUserVolumeConfigV1Alpha1()
+	userVolume.MetaName = "user-data"
+
+	existingVolume := blockcfg.NewExistingVolumeConfigV1Alpha1()
+	existingVolume.MetaName = "existing-data"
+
+	externalVolume := blockcfg.NewExternalVolumeConfigV1Alpha1()
+	externalVolume.MetaName = "external-data"
+
+	suite.applyContainers(doc, userVolume, existingVolume, externalVolume)
+
+	ctest.AssertResource(suite, "director", func(spec *containers.ContainerSpec, asrt *assert.Assertions) {
+		mounts := spec.TypedSpec().Mounts
+		asrt.Len(mounts, 4)
+
+		for i, expected := range []struct {
+			name string
+			id   string
+		}{
+			{name: "user-data", id: "u-user-data"},
+			{name: "existing-data", id: "e-existing-data"},
+			{name: "external-data", id: "x-external-data"},
+			{name: "undeclared", id: ""},
+		} {
+			asrt.Equal(containers.MountKindVolume, mounts[i].Kind)
+			asrt.Equal(expected.name, mounts[i].VolumeName)
+			asrt.Equal(expected.id, mounts[i].VolumeID)
+		}
 	})
 }
 

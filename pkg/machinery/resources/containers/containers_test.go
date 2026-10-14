@@ -60,8 +60,8 @@ func TestProtobufRoundTrip(t *testing.T) {
 		Environment: []string{"NGINX_PORT=8080"},
 		Mounts: []containers.ContainerMountSpec{
 			{
-				Kind:        containers.MountKindUserVolume,
-				VolumeID:    "u-web-content", //nolint:staticcheck // backward compatibility
+				Kind:        containers.MountKindVolume,
+				VolumeID:    "u-web-content",
 				VolumeName:  "web-content",
 				Destination: "/usr/share/nginx/html",
 				Options:     []string{"ro"},
@@ -177,11 +177,11 @@ func TestMountStatusProtobufRoundTrip(t *testing.T) {
 		Ready: true,
 		Mounts: []containers.ResolvedMountSpec{
 			{
-				Kind:        containers.MountKindUserVolume,
+				Kind:        containers.MountKindVolume,
 				Source:      "/var/mnt/web-content",
 				Destination: "/usr/share/nginx/html",
 				Options:     []string{"ro"},
-				VolumeID:    "u-web-content", //nolint:staticcheck // backward compatibility
+				VolumeID:    "u-web-content",
 				VolumeName:  "web-content",
 			},
 			{

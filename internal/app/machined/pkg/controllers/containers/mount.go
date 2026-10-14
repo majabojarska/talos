@@ -237,7 +237,7 @@ func (ctrl *MountController) reconcileContainer(
 	var reasons []string
 
 	for _, containerMountSpec := range containerSpec.TypedSpec().Mounts {
-		if containerMountSpec.Kind != containers.MountKindUserVolume {
+		if containerMountSpec.Kind != containers.MountKindVolume {
 			// tmpfs and hostPath need nothing from the block subsystem: the source is either nothing
 			// at all or a path which must already exist.
 			resolvedMounts = append(resolvedMounts, containers.ResolvedMountSpec{
@@ -251,8 +251,19 @@ func (ctrl *MountController) reconcileContainer(
 			continue
 		}
 
-		volumeName := containerMountSpec.UserVolumeName()
-		volumeID := containerMountSpec.UserVolumeID()
+		volumeName := containerMountSpec.VolumeName
+		volumeID := containerMountSpec.VolumeID
+
+		if volumeID == "" {
+			// The name resolved to no volume. Configuration validation rejects that, so this is only
+			// reached if validation was bypassed; nothing may be requested from the block subsystem for
+			// a volume nothing declares.
+			ready = false
+
+			reasons = append(reasons, fmt.Sprintf("no user, existing or external volume named %q is configured", volumeName))
+
+			continue
+		}
 
 		requestID := ctrl.mountRequestID(containerSpecID, volumeID)
 		wanted[requestID] = struct{}{}
@@ -287,7 +298,7 @@ func (ctrl *MountController) reconcileContainer(
 
 			ready = false
 
-			reasons = append(reasons, fmt.Sprintf("waiting for user volume %q to be mounted", volumeName))
+			reasons = append(reasons, fmt.Sprintf("waiting for volume %q to be mounted", volumeName))
 
 			continue
 		}
@@ -298,7 +309,7 @@ func (ctrl *MountController) reconcileContainer(
 			// report not-ready instead so the container won't start/restart while the volume is unavailable.
 			ready = false
 
-			reasons = append(reasons, fmt.Sprintf("user volume %q is being unmounted", volumeName))
+			reasons = append(reasons, fmt.Sprintf("volume %q is being unmounted", volumeName))
 
 			continue
 		}
@@ -308,7 +319,7 @@ func (ctrl *MountController) reconcileContainer(
 			// read-only, so another holder can leave this one with less access than it asked for.
 			ready = false
 
-			reasons = append(reasons, fmt.Sprintf("user volume %q is mounted read-only", volumeName))
+			reasons = append(reasons, fmt.Sprintf("volume %q is mounted read-only", volumeName))
 
 			continue
 		}
@@ -332,7 +343,7 @@ func (ctrl *MountController) reconcileContainer(
 			Source:      volumeMountStatus.TypedSpec().Target,
 			Destination: containerMountSpec.Destination,
 			Options:     containerMountSpec.Options,
-			VolumeID:    volumeID, //nolint:staticcheck // backward compatibility
+			VolumeID:    volumeID,
 			VolumeName:  volumeName,
 		})
 	}

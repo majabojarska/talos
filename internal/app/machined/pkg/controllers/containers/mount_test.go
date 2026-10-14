@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cosi-project/runtime/pkg/resource"
+	"github.com/cosi-project/runtime/pkg/safe"
 	"github.com/cosi-project/runtime/pkg/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -22,7 +23,7 @@ import (
 const (
 	// mountContainer is the container name the mount tests use.
 	mountContainer = "nginx"
-	// testVolumeName is the user volume a userVolume mount names.
+	// testVolumeName is the user volume a volume mount names.
 	testVolumeName = "web-content"
 	// testVolumeID is the block volume ID the user volume is known by.
 	testVolumeID = "u-" + testVolumeName
@@ -68,9 +69,10 @@ func (suite *MountSuite) createSpec(mounts ...containers.ContainerMountSpec) {
 	suite.Require().NoError(suite.State().Create(suite.Ctx(), spec))
 }
 
-func (suite *MountSuite) userVolumeMount(options ...string) containers.ContainerMountSpec {
+func (suite *MountSuite) volumeMount(options ...string) containers.ContainerMountSpec {
 	return containers.ContainerMountSpec{
-		Kind:        containers.MountKindUserVolume,
+		Kind:        containers.MountKindVolume,
+		VolumeID:    testVolumeID,
 		VolumeName:  testVolumeName,
 		Destination: "/usr/share/nginx/html",
 		Options:     options,
@@ -137,10 +139,10 @@ func (suite *MountSuite) TestPassesThroughTmpfsAndHostPath() {
 	ctest.AssertNoResource[*block.VolumeMountRequest](suite, testRequestID)
 }
 
-// TestRequestsAndResolvesUserVolume covers the whole happy path for a userVolume: the request, the
+// TestRequestsAndResolvesUserVolume covers the whole happy path for a user volume: the request, the
 // wait, the finalizer, and the resolved host path.
 func (suite *MountSuite) TestRequestsAndResolvesUserVolume() {
-	suite.createSpec(suite.userVolumeMount())
+	suite.createSpec(suite.volumeMount())
 
 	ctest.AssertResource(suite, testRequestID, func(request *block.VolumeMountRequest, asrt *assert.Assertions) {
 		asrt.Equal(testVolumeID, request.TypedSpec().VolumeID)
@@ -154,8 +156,8 @@ func (suite *MountSuite) TestRequestsAndResolvesUserVolume() {
 	// Until the volume is mounted there is no host path, so the container cannot start.
 	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
 		asrt.False(status.TypedSpec().Ready)
-		// The reason names the user volume, not the internal block volume ID.
-		asrt.Equal(`waiting for user volume "web-content" to be mounted`, status.TypedSpec().Error)
+		// The reason names the volume, not the internal block volume ID.
+		asrt.Equal(`waiting for volume "web-content" to be mounted`, status.TypedSpec().Error)
 	})
 
 	suite.satisfyMount(false)
@@ -171,7 +173,7 @@ func (suite *MountSuite) TestRequestsAndResolvesUserVolume() {
 		asrt.Equal(testVolumeTarget, status.TypedSpec().Mounts[0].Source)
 		asrt.Equal("/usr/share/nginx/html", status.TypedSpec().Mounts[0].Destination)
 		asrt.Equal(testVolumeName, status.TypedSpec().Mounts[0].VolumeName)
-		asrt.Equal(testVolumeID, status.TypedSpec().Mounts[0].VolumeID, "deprecated field still populated for older clients") //nolint:staticcheck
+		asrt.Equal(testVolumeID, status.TypedSpec().Mounts[0].VolumeID)
 	})
 
 	// Without the finalizer the volume could be unmounted from under the container.
@@ -183,7 +185,7 @@ func (suite *MountSuite) TestRequestsAndResolvesUserVolume() {
 // TestReadOnlyOptionIsRequested covers ro reaching the block subsystem, which is what actually
 // enforces it.
 func (suite *MountSuite) TestReadOnlyOptionIsRequested() {
-	suite.createSpec(suite.userVolumeMount("ro"))
+	suite.createSpec(suite.volumeMount("ro"))
 
 	ctest.AssertResource(suite, testRequestID,
 		func(request *block.VolumeMountRequest, asrt *assert.Assertions) {
@@ -191,24 +193,30 @@ func (suite *MountSuite) TestReadOnlyOptionIsRequested() {
 		})
 }
 
-// TestLegacyVolumeIDOnly covers a spec carrying only the deprecated VolumeID: it still requests the
-// right block volume and reports the user volume name.
-func (suite *MountSuite) TestLegacyVolumeIDOnly() {
+// TestRequestsExistingVolume covers a mount naming an existing volume: the block volume requested is
+// the one the spec resolved to, not one derived from the name.
+func (suite *MountSuite) TestRequestsExistingVolume() {
+	const existingVolumeID = "e-" + testVolumeName
+
+	existingRequestID := mountControllerName + "/" + mountContainer + "/" + existingVolumeID
+
 	suite.createSpec(containers.ContainerMountSpec{
-		Kind:        containers.MountKindUserVolume,
-		VolumeID:    testVolumeID, //nolint:staticcheck // backward compatibility
+		Kind:        containers.MountKindVolume,
+		VolumeID:    existingVolumeID,
+		VolumeName:  testVolumeName,
 		Destination: "/usr/share/nginx/html",
 	})
 
-	ctest.AssertResource(suite, testRequestID, func(request *block.VolumeMountRequest, asrt *assert.Assertions) {
-		asrt.Equal(testVolumeID, request.TypedSpec().VolumeID)
+	ctest.AssertResource(suite, existingRequestID, func(request *block.VolumeMountRequest, asrt *assert.Assertions) {
+		asrt.Equal(existingVolumeID, request.TypedSpec().VolumeID)
 	})
 
-	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
-		asrt.Equal(`waiting for user volume "web-content" to be mounted`, status.TypedSpec().Error)
-	})
+	status := block.NewVolumeMountStatus(block.NamespaceName, existingRequestID)
+	status.TypedSpec().VolumeID = existingVolumeID
+	status.TypedSpec().Requester = mountControllerName
+	status.TypedSpec().Target = testVolumeTarget
 
-	suite.satisfyMount(false)
+	suite.Require().NoError(suite.State().Create(suite.Ctx(), status))
 
 	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
 		asrt.True(status.TypedSpec().Ready, "error: %q", status.TypedSpec().Error)
@@ -217,8 +225,29 @@ func (suite *MountSuite) TestLegacyVolumeIDOnly() {
 			return
 		}
 
+		asrt.Equal(testVolumeTarget, status.TypedSpec().Mounts[0].Source)
 		asrt.Equal(testVolumeName, status.TypedSpec().Mounts[0].VolumeName)
+		asrt.Equal(existingVolumeID, status.TypedSpec().Mounts[0].VolumeID)
 	})
+}
+
+// TestUnresolvedVolumeIsNotRequested covers a mount whose name resolved to no volume: nothing is
+// requested from the block subsystem, and the container is held back.
+func (suite *MountSuite) TestUnresolvedVolumeIsNotRequested() {
+	suite.createSpec(containers.ContainerMountSpec{
+		Kind:        containers.MountKindVolume,
+		VolumeName:  testVolumeName,
+		Destination: "/usr/share/nginx/html",
+	})
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.False(status.TypedSpec().Ready)
+		asrt.Equal(`no user, existing or external volume named "web-content" is configured`, status.TypedSpec().Error)
+	})
+
+	requests, err := safe.StateListAll[*block.VolumeMountRequest](suite.Ctx(), suite.State())
+	suite.Require().NoError(err)
+	suite.Assert().Zero(requests.Len())
 }
 
 // TestReadOnlyMountIsNotAcceptedForWritable covers the volume coming back with less access than was
@@ -228,7 +257,7 @@ func (suite *MountSuite) TestLegacyVolumeIDOnly() {
 // so another holder can decide this. Reporting ready would give the container a read-only mount it
 // did not ask for.
 func (suite *MountSuite) TestReadOnlyMountIsNotAcceptedForWritable() {
-	suite.createSpec(suite.userVolumeMount())
+	suite.createSpec(suite.volumeMount())
 
 	ctest.AssertResource(suite, testRequestID, func(*block.VolumeMountRequest, *assert.Assertions) {})
 
@@ -236,7 +265,7 @@ func (suite *MountSuite) TestReadOnlyMountIsNotAcceptedForWritable() {
 
 	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
 		asrt.False(status.TypedSpec().Ready)
-		asrt.Equal(`user volume "web-content" is mounted read-only`, status.TypedSpec().Error)
+		asrt.Equal(`volume "web-content" is mounted read-only`, status.TypedSpec().Error)
 	})
 }
 
@@ -245,7 +274,7 @@ func (suite *MountSuite) TestReadOnlyMountIsNotAcceptedForWritable() {
 // The mount is reported not-ready while the finalizer stays put: it keeps the volume mounted until the
 // container has actually gone.
 func (suite *MountSuite) TestTearingDownMountMarksNotReady() {
-	suite.createSpec(suite.userVolumeMount())
+	suite.createSpec(suite.volumeMount())
 
 	ctest.AssertResource(suite, testRequestID, func(*block.VolumeMountRequest, *assert.Assertions) {})
 	suite.satisfyMount(false)
@@ -262,7 +291,7 @@ func (suite *MountSuite) TestTearingDownMountMarksNotReady() {
 	suite.assertMountsReady(false)
 
 	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
-		asrt.Equal(`user volume "web-content" is being unmounted`, status.TypedSpec().Error)
+		asrt.Equal(`volume "web-content" is being unmounted`, status.TypedSpec().Error)
 	})
 
 	ctest.AssertResource(suite, testRequestID, func(status *block.VolumeMountStatus, asrt *assert.Assertions) {
@@ -288,7 +317,7 @@ func (suite *MountSuite) TestDoesNotFinalizeTearingDownMount() {
 	_, err := suite.State().Teardown(suite.Ctx(), statusMD)
 	suite.Require().NoError(err)
 
-	suite.createSpec(suite.userVolumeMount())
+	suite.createSpec(suite.volumeMount())
 
 	// The request is made, but the leftover status cannot be used or finalized.
 	ctest.AssertResource(suite, testRequestID, func(*block.VolumeMountRequest, *assert.Assertions) {})
@@ -306,7 +335,7 @@ func (suite *MountSuite) TestDoesNotFinalizeTearingDownMount() {
 // TestReleasesMountWhenContainerGoesAway covers the mount being given back once the container is gone
 // and nothing is running.
 func (suite *MountSuite) TestReleasesMountWhenContainerGoesAway() {
-	suite.createSpec(suite.userVolumeMount())
+	suite.createSpec(suite.volumeMount())
 
 	ctest.AssertResource(suite, testRequestID, func(*block.VolumeMountRequest, *assert.Assertions) {})
 	suite.satisfyMount(false)
@@ -330,7 +359,7 @@ func (suite *MountSuite) TestReleasesMountWhenContainerGoesAway() {
 //
 // The task may still have the path open, so the hold has to outlive the spec change.
 func (suite *MountSuite) TestKeepsMountWhileInstanceIsLive() {
-	suite.createSpec(suite.userVolumeMount())
+	suite.createSpec(suite.volumeMount())
 
 	ctest.AssertResource(suite, testRequestID, func(*block.VolumeMountRequest, *assert.Assertions) {})
 	suite.satisfyMount(false)
@@ -362,7 +391,7 @@ func (suite *MountSuite) TestKeepsMountWhileInstanceIsLive() {
 // The barrier is what the stopContainers phase waits on, so it has to be released; the container spec
 // still exists at that point, and treating it as a reason to keep the mount would hang the shutdown.
 func (suite *MountSuite) TestReleasesEverythingOnLifecycleTeardown() {
-	suite.createSpec(suite.userVolumeMount())
+	suite.createSpec(suite.volumeMount())
 
 	ctest.AssertResource(suite, testRequestID, func(*block.VolumeMountRequest, *assert.Assertions) {})
 	suite.satisfyMount(false)
