@@ -356,17 +356,21 @@ func (ctrl *MountController) handleMountOperation(
 		return ctrl.handleSymlinkMountOperation(logger, rootPath, mountTarget, mountRequest, volumeStatus)
 
 	case block.VolumeTypeTmpfs:
-		return fmt.Errorf("not implemented yet")
+		return ctrl.handleTmpfsMountOperation(ctx, logger, filepath.Join(rootPath, mountTarget), mountRequest, volumeStatus)
 
 	case block.VolumeTypeExternal:
-		return ctrl.handleDiskMountOperation(ctx, logger, mountSource, filepath.Join(rootPath, mountTarget), mountFilesystem, mountRequest, volumeStatus)
+		return ctrl.handleDiskMountOperation(
+			ctx, logger, mountSource, filepath.Join(rootPath, mountTarget), mountFilesystem, mountFilesystem.String(), mountRequest, volumeStatus,
+		)
 
 	case block.VolumeTypeDisk, block.VolumeTypePartition:
 		if mountFilesystem == block.FilesystemTypeSwap {
 			return ctrl.handleSwapMountOperation(logger, mountSource, mountRequest, volumeStatus)
 		}
 
-		return ctrl.handleDiskMountOperation(ctx, logger, mountSource, filepath.Join(rootPath, mountTarget), mountFilesystem, mountRequest, volumeStatus)
+		return ctrl.handleDiskMountOperation(
+			ctx, logger, mountSource, filepath.Join(rootPath, mountTarget), mountFilesystem, mountFilesystem.String(), mountRequest, volumeStatus,
+		)
 
 	default:
 		return fmt.Errorf("unsupported volume type %q", volumeStatus.TypedSpec().Type)
@@ -643,12 +647,18 @@ func labelDetachedRoot(mountRequest *block.MountRequest, volumeStatus *block.Vol
 	return mountops.LabelRoot(point.Root(), volumeStatus.TypedSpec().Filesystem, volumeStatus.TypedSpec().MountSpec)
 }
 
+// handleDiskMountOperation mounts a filesystem of type fsType from mountSource.
+//
+// mountFilesystem is the filesystem as recorded in the volume status, while fsType is the name passed to fsopen:
+// the two differ for filesystems without a FilesystemType of their own, such as tmpfs.
+//
 //nolint:gocyclo,cyclop
 func (ctrl *MountController) handleDiskMountOperation(
 	ctx context.Context,
 	logger *zap.Logger,
 	mountSource, mountTarget string,
 	mountFilesystem block.FilesystemType,
+	fsType string,
 	mountRequest *block.MountRequest,
 	volumeStatus *block.VolumeStatus,
 ) error {
@@ -682,36 +692,7 @@ func (ctrl *MountController) handleDiskMountOperation(
 			parameters = resolvedParameters
 		}
 
-		for _, param := range parameters {
-			logger.Info(
-				"adding new parameter",
-				zap.String("parameter", param.Name),
-				zap.String("parameter.type", param.Type.String()),
-				zap.String("parameter.string", pointer.SafeDeref(param.String)),
-				zap.Binary("parameter.bytes", param.Binary),
-			)
-
-			switch param.Type {
-			case block.FSParameterTypeBinaryValue:
-				if param.Binary == nil {
-					logger.Warn("skipping nil binary parameter", zap.String("parameter", param.Name))
-
-					continue
-				}
-
-				fsOpts = append(fsOpts, fsopen.WithBinaryParameters(param.Name, param.Binary))
-			case block.FSParameterTypeStringValue:
-				if param.String == nil {
-					logger.Warn("skipping nil string parameter", zap.String("parameter", param.Name))
-
-					continue
-				}
-
-				fsOpts = append(fsOpts, fsopen.WithStringParameter(param.Name, *param.String))
-			case block.FSParameterTypeBooleanValue:
-				fsOpts = append(fsOpts, fsopen.WithBoolParameter(param.Name))
-			}
-		}
+		fsOpts = append(fsOpts, buildFSOpenOptions(logger, parameters)...)
 
 		if shouldUpdateTargetSettings {
 			opts = append(opts, mount.WithSelinuxLabel(volumeStatus.TypedSpec().MountSpec.SelinuxLabel))
@@ -741,7 +722,7 @@ func (ctrl *MountController) handleDiskMountOperation(
 			[]mount.ManagerOption{
 				mount.WithTarget(mountTarget),
 				mount.WithFsopen(
-					mountFilesystem.String(),
+					fsType,
 					fsOpts...,
 				),
 				mount.WithPrinter(logger.Sugar().Infof),
@@ -899,6 +880,88 @@ func growMountedFilesystem(ctx context.Context, logger *zap.Logger, mountCtx *mo
 	mountCtx.volumeSize = volumeStatus.TypedSpec().Size
 
 	return nil
+}
+
+// handleTmpfsMountOperation mounts a memory-backed volume.
+//
+// The mount goes through the generic filesystem path. Unlike other volumes, a change of the parameters of a
+// mounted tmpfs is applied to the live superblock instead of remounting: a tmpfs has no backing store, so a
+// remount would drop its content, and every bind of the old mount (e.g. into a running container) would
+// keep using the old instance.
+func (ctrl *MountController) handleTmpfsMountOperation(
+	ctx context.Context,
+	logger *zap.Logger,
+	mountTarget string,
+	mountRequest *block.MountRequest,
+	volumeStatus *block.VolumeStatus,
+) error {
+	parameters := volumeStatus.TypedSpec().MountSpec.Parameters
+
+	// An unbounded tmpfs may grow up to half of the memory.
+	if !slices.ContainsFunc(parameters, func(param block.ParameterSpec) bool {
+		return param.Name == block.TmpfsSizeParameter && param.String != nil
+	}) {
+		return fmt.Errorf("tmpfs volume %q requires the %q parameter", volumeStatus.Metadata().ID(), block.TmpfsSizeParameter)
+	}
+
+	if mountCtx, ok := ctrl.activeMounts[mountRequest.Metadata().ID()]; ok && mountCtx.configuration.ParametersChanged(parameters) {
+		if mountCtx.detached {
+			// A detached mount has no path to pick the superblock from; it keeps the parameters it was mounted with.
+			logger.Warn("cannot reconfigure a detached tmpfs mount", zap.String("mount_request.id", mountRequest.Metadata().ID()))
+		} else {
+			if err := mountops.ReconfigureFilesystem(mountCtx.point.Target(), parameters); err != nil {
+				return fmt.Errorf("failed to reconfigure %q: %w", mountRequest.Metadata().ID(), err)
+			}
+
+			logger.Info(
+				"volume mount reconfigured",
+				zap.String("volume", volumeStatus.Metadata().ID()),
+				zap.String("target", mountCtx.point.Target()),
+			)
+
+			mountCtx.configuration = mountconfig.NewSnapshot(parameters)
+		}
+	}
+
+	return ctrl.handleDiskMountOperation(ctx, logger, "", mountTarget, block.FilesystemTypeNone, "tmpfs", mountRequest, volumeStatus)
+}
+
+// buildFSOpenOptions converts the mount parameters to fsopen options.
+func buildFSOpenOptions(logger *zap.Logger, parameters []block.ParameterSpec) []fsopen.Option {
+	var fsOpts []fsopen.Option
+
+	for _, param := range parameters {
+		logger.Info(
+			"adding new parameter",
+			zap.String("parameter", param.Name),
+			zap.String("parameter.type", param.Type.String()),
+			zap.String("parameter.string", pointer.SafeDeref(param.String)),
+			zap.Binary("parameter.bytes", param.Binary),
+		)
+
+		switch param.Type {
+		case block.FSParameterTypeBinaryValue:
+			if param.Binary == nil {
+				logger.Warn("skipping nil binary parameter", zap.String("parameter", param.Name))
+
+				continue
+			}
+
+			fsOpts = append(fsOpts, fsopen.WithBinaryParameters(param.Name, param.Binary))
+		case block.FSParameterTypeStringValue:
+			if param.String == nil {
+				logger.Warn("skipping nil string parameter", zap.String("parameter", param.Name))
+
+				continue
+			}
+
+			fsOpts = append(fsOpts, fsopen.WithStringParameter(param.Name, *param.String))
+		case block.FSParameterTypeBooleanValue:
+			fsOpts = append(fsOpts, fsopen.WithBoolParameter(param.Name))
+		}
+	}
+
+	return fsOpts
 }
 
 func bindMountOptions(selinuxLabel string, secure, noExec bool) []mount.ManagerOption {
@@ -1062,10 +1125,7 @@ func (ctrl *MountController) handleUnmountOperation(
 	case block.VolumeTypeDirectory:
 		return ctrl.handleDirectoryUnmountOperation(logger, mountRequest, volumeStatus)
 
-	case block.VolumeTypeTmpfs:
-		return fmt.Errorf("not implemented yet")
-
-	case block.VolumeTypeExternal:
+	case block.VolumeTypeTmpfs, block.VolumeTypeExternal:
 		return ctrl.handleDiskUnmountOperation(logger, mountRequest, volumeStatus)
 
 	case block.VolumeTypeDisk, block.VolumeTypePartition, block.VolumeTypeOverlay:

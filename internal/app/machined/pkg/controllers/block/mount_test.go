@@ -14,6 +14,7 @@ import (
 	"github.com/cosi-project/runtime/pkg/resource/rtestutils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"golang.org/x/sys/unix"
 
 	blockctrls "github.com/siderolabs/talos/internal/app/machined/pkg/controllers/block"
 	"github.com/siderolabs/talos/internal/app/machined/pkg/controllers/ctest"
@@ -235,4 +236,85 @@ func (suite *MountSuite) TestUnmountBusy() {
 	ctest.AssertResource(suite, "a-busy", func(mountRequest *block.MountRequest, asrt *assert.Assertions) {
 		asrt.True(mountRequest.Metadata().Finalizers().Empty())
 	})
+}
+
+func (suite *MountSuite) TestTmpfsRequiresSize() {
+	targetPath := filepath.Join(suite.T().TempDir(), "tmpfs")
+
+	volumeStatus := block.NewVolumeStatus(block.NamespaceName, "tmpfs-volume")
+	volumeStatus.TypedSpec().Type = block.VolumeTypeTmpfs
+	volumeStatus.TypedSpec().MountSpec = block.MountSpec{
+		TargetPath: targetPath,
+	}
+	volumeStatus.TypedSpec().Phase = block.VolumePhaseReady
+	suite.Create(volumeStatus)
+
+	mountRequest := block.NewMountRequest(block.NamespaceName, "tmpfs-volume")
+	mountRequest.TypedSpec().RequesterIDs = []string{"requester1/tmpfs-volume"}
+	mountRequest.TypedSpec().Requesters = []string{"requester1"}
+	mountRequest.TypedSpec().VolumeID = "tmpfs-volume"
+	suite.Create(mountRequest)
+
+	ctest.AssertNoResource[*block.MountStatus](suite, "tmpfs-volume")
+
+	_, err := os.Stat(targetPath)
+	suite.Require().ErrorIs(err, os.ErrNotExist)
+}
+
+func (suite *MountSuite) TestTmpfsResizeLive() {
+	if os.Getuid() != 0 {
+		suite.T().Skip("can't run the test as non-root")
+	}
+
+	targetPath := filepath.Join(suite.T().TempDir(), "tmpfs")
+
+	volumeStatus := block.NewVolumeStatus(block.NamespaceName, "tmpfs-volume")
+	volumeStatus.TypedSpec().Type = block.VolumeTypeTmpfs
+	volumeStatus.TypedSpec().MountSpec = block.MountSpec{
+		TargetPath: targetPath,
+		FileMode:   0o755,
+		Parameters: []block.ParameterSpec{block.NewStringParameter(block.TmpfsSizeParameter, "1048576")},
+	}
+	volumeStatus.TypedSpec().Phase = block.VolumePhaseReady
+	suite.Create(volumeStatus)
+
+	suite.mountVolume("tmpfs-volume")
+
+	assertSize := func(expected int64) {
+		suite.Assert().EventuallyWithT(func(collect *assert.CollectT) {
+			var st unix.Statfs_t
+
+			if !assert.NoError(collect, unix.Statfs(targetPath, &st)) {
+				return
+			}
+
+			assert.Equal(collect, uint32(unix.TMPFS_MAGIC), uint32(st.Type))
+			assert.Equal(collect, expected, int64(st.Blocks)*st.Bsize)
+		}, 10*time.Second, 50*time.Millisecond)
+	}
+
+	assertSize(1 << 20)
+
+	// content must survive the resize: the superblock is reconfigured, not replaced
+	suite.Require().NoError(os.WriteFile(filepath.Join(targetPath, "file"), []byte("content"), 0o644))
+
+	ctest.UpdateWithConflicts(suite, volumeStatus, func(vs *block.VolumeStatus) error {
+		vs.TypedSpec().MountSpec.Parameters = []block.ParameterSpec{block.NewStringParameter(block.TmpfsSizeParameter, "2097152")}
+
+		return nil
+	})
+
+	assertSize(2 << 20)
+	suite.Assert().FileExists(filepath.Join(targetPath, "file"))
+
+	_, err := suite.State().Teardown(suite.Ctx(), block.NewMountRequest(block.NamespaceName, "tmpfs-volume").Metadata())
+	suite.Require().NoError(err)
+
+	ctest.AssertResource(suite, "tmpfs-volume", func(mountRequest *block.MountRequest, asrt *assert.Assertions) {
+		asrt.True(mountRequest.Metadata().Finalizers().Empty())
+	})
+
+	// the mount point was created by the controller, so it is removed on unmount
+	_, err = os.Stat(targetPath)
+	suite.Require().ErrorIs(err, os.ErrNotExist)
 }

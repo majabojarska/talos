@@ -363,8 +363,17 @@ func (ctrl *VolumeManagerController) Run(ctx context.Context, r controller.Runti
 
 			// External mount settings remain mutable after provisioning, so consumers always reconcile
 			// against the latest desired state even when the volume is already ready.
-			if vc.TypedSpec().Type == block.VolumeTypeExternal {
+			//
+			// A tmpfs is resized live by the mount controller, so its parameters stay mutable as well.
+			switch vc.TypedSpec().Type { //nolint:exhaustive
+			case block.VolumeTypeExternal:
 				volumeStatus.TypedSpec().MountSpec = vc.TypedSpec().Mount
+			case block.VolumeTypeTmpfs:
+				volumeStatus.TypedSpec().MountSpec = vc.TypedSpec().Mount
+
+				if size, ok := block.TmpfsSize(vc.TypedSpec().Mount.Parameters); ok {
+					volumeStatus.TypedSpec().SetSize(size)
+				}
 			}
 
 			// Propagate resolved trim/scrub configuration and the encryption discard setting to the status,
@@ -435,6 +444,7 @@ func (ctrl *VolumeManagerController) Run(ctx context.Context, r controller.Runti
 						block.VolumeTypeDirectory,
 						block.VolumeTypeOverlay,
 						block.VolumeTypeSymlink,
+						block.VolumeTypeTmpfs,
 					},
 					volumeStatus.TypedSpec().Type,
 				)

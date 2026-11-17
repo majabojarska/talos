@@ -16,6 +16,7 @@ import (
 	"syscall"
 
 	"go.uber.org/zap"
+	"golang.org/x/sys/unix"
 
 	"github.com/siderolabs/talos/internal/pkg/mount/v3"
 	"github.com/siderolabs/talos/internal/pkg/selinux"
@@ -87,6 +88,49 @@ func LabelRoot(root xfs.Root, fstype block.FilesystemType, mountSpec block.Mount
 	}
 
 	return mount.FilterSelinuxLabelErrors(root.Source(), fstype.String(), err)
+}
+
+// ReconfigureFilesystem applies the parameters to the live superblock of the filesystem mounted at target.
+//
+// Only the parameters given are changed; the others keep their current values.
+func ReconfigureFilesystem(target string, parameters []block.ParameterSpec) (err error) {
+	fd, err := unix.Fspick(unix.AT_FDCWD, target, unix.FSPICK_CLOEXEC|unix.FSPICK_SYMLINK_NOFOLLOW|unix.FSPICK_NO_AUTOMOUNT)
+	if err != nil {
+		return fmt.Errorf("fspick %q failed: %w", target, err)
+	}
+
+	defer func() {
+		err = errors.Join(err, unix.Close(fd))
+	}()
+
+	for _, param := range parameters {
+		switch param.Type {
+		case block.FSParameterTypeStringValue:
+			if param.String == nil {
+				continue
+			}
+
+			err = unix.FsconfigSetString(fd, param.Name, *param.String)
+		case block.FSParameterTypeBooleanValue:
+			err = unix.FsconfigSetFlag(fd, param.Name)
+		case block.FSParameterTypeBinaryValue:
+			if param.Binary == nil {
+				continue
+			}
+
+			err = unix.FsconfigSetBinary(fd, param.Name, param.Binary)
+		}
+
+		if err != nil {
+			return fmt.Errorf("failed to set parameter %q on %q: %w", param.Name, target, err)
+		}
+	}
+
+	if err = unix.FsconfigReconfigure(fd); err != nil {
+		return fmt.Errorf("failed to reconfigure %q: %w", target, err)
+	}
+
+	return nil
 }
 
 // RemoveMountPoint removes the mount point directory created by createMountPoint after unmount.

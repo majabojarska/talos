@@ -7,6 +7,7 @@ package block
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/cosi-project/runtime/pkg/resource"
@@ -230,6 +231,29 @@ type ParameterSpec struct {
 	String *string `yaml:"string,omitempty" protobuf:"3"`
 	// Binary value of the parameter.
 	Binary []byte `yaml:"binary,omitempty" protobuf:"5"`
+}
+
+// TmpfsSizeParameter is the mount parameter bounding the size of a tmpfs volume.
+//
+// Talos sets it in bytes; the kernel also accepts k/m/g suffixes and a percentage of the memory.
+const TmpfsSizeParameter = "size"
+
+// TmpfsSize returns the size of a tmpfs volume in bytes, if its size parameter is set in bytes.
+func TmpfsSize(parameters []ParameterSpec) (uint64, bool) {
+	for _, param := range parameters {
+		if param.Name != TmpfsSizeParameter || param.String == nil {
+			continue
+		}
+
+		size, err := strconv.ParseUint(*param.String, 10, 64)
+		if err != nil {
+			return 0, false
+		}
+
+		return size, true
+	}
+
+	return 0, false
 }
 
 // NewBooleanParameter creates a new boolean parameter.
