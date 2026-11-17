@@ -883,7 +883,7 @@ func (x *ContainerLifecycleSpec) GetShutdownDeadline() *timestamppb.Timestamp {
 // Exactly one of VolumeName, Tmpfs or HostPath describes the source; Kind says which.
 type ContainerMountSpec struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Kind is one of "volume", "tmpfs" or "hostPath".
+	// Kind is one of "volume", "textVolume", "tmpfs" or "hostPath".
 	Kind string `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
 	// Source is the host path for a hostPath mount.
 	Source string `protobuf:"bytes,3,opt,name=source,proto3" json:"source,omitempty"`
@@ -894,7 +894,7 @@ type ContainerMountSpec struct {
 	// Options with the writable default already applied.
 	Options []string `protobuf:"bytes,6,rep,name=options,proto3" json:"options,omitempty"`
 	// VolumeName is the name of the user, existing or external volume a volume mount refers to,
-	// e.g. "web-content".
+	// or of the text volume a textVolume mount refers to, e.g. "web-content".
 	VolumeName    string `protobuf:"bytes,7,opt,name=volume_name,json=volumeName,proto3" json:"volume_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

@@ -383,7 +383,7 @@ func TestContainerConfigValidationErrors(t *testing.T) {
 		{
 			name:        "mount with no source",
 			doc:         "name: nginx\nimage: nginx\nmounts:\n  - {}",
-			expectedErr: "exactly one of volume, tmpfs or hostPath must be set",
+			expectedErr: "exactly one of volume, textVolume, tmpfs or hostPath must be set",
 		},
 		{
 			name: "mount with two sources",
@@ -395,7 +395,7 @@ mounts:
     hostPath:
       source: /dev
       destination: /dev`,
-			expectedErr: "exactly one of volume, tmpfs or hostPath must be set",
+			expectedErr: "exactly one of volume, textVolume, tmpfs or hostPath must be set",
 		},
 		{
 			name: "relative destination",
@@ -790,7 +790,7 @@ func TestContainerConfigValidateMounts(t *testing.T) {
 			mounts: []container.ContainerMount{
 				{},
 			},
-			expectedErrs: []string{"mounts[0]: exactly one of volume, tmpfs or hostPath must be set"},
+			expectedErrs: []string{"mounts[0]: exactly one of volume, textVolume, tmpfs or hostPath must be set"},
 		},
 		{
 			name: "mount with two sources",
@@ -800,7 +800,7 @@ func TestContainerConfigValidateMounts(t *testing.T) {
 					HostPathMount: &container.HostPathMount{MountSource: "/dev", MountDestination: "/dev"},
 				},
 			},
-			expectedErrs: []string{"mounts[0]: exactly one of volume, tmpfs or hostPath must be set"},
+			expectedErrs: []string{"mounts[0]: exactly one of volume, textVolume, tmpfs or hostPath must be set"},
 		},
 		{
 			name: "invalid sub-mount is wrapped with its index",

@@ -306,6 +306,16 @@ func resolveMounts(configMounts []configcfg.ContainerMountConfig) ([]containers.
 				Destination: volume.Destination(),
 				Options:     volume.MountOptions(),
 			})
+		case containerMountConfig.TextVolume().IsPresent():
+			textVolume, _ := containerMountConfig.TextVolume().Get()
+
+			containerMountSpecs = append(containerMountSpecs, containers.ContainerMountSpec{
+				Kind:        containers.MountKindTextVolume,
+				VolumeName:  textVolume.Name(),
+				Destination: textVolume.Destination(),
+				// Always read-only: the content is owned by the machine configuration.
+				Options: []string{"ro"},
+			})
 		case containerMountConfig.Tmpfs().IsPresent():
 			tmpfs, _ := containerMountConfig.Tmpfs().Get()
 

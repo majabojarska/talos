@@ -81,6 +81,11 @@ func (ctrl *MountController) Inputs() []controller.Input {
 			Kind:      controller.InputStrong,
 		},
 		{
+			Namespace: block.NamespaceName,
+			Type:      block.TextVolumeStatusType,
+			Kind:      controller.InputWeak,
+		},
+		{
 			// InputDestroyReady is what lets this controller tear down its own mount requests: it
 			// wakes us when one is tearing down with no finalizers left.
 			Namespace: block.NamespaceName,
@@ -100,6 +105,11 @@ func (ctrl *MountController) Outputs() []controller.Output {
 		{
 			// Shared: many controllers write mount requests.
 			Type: block.VolumeMountRequestType,
+			Kind: controller.OutputShared,
+		},
+		{
+			// Shared: text volumes serve other consumers as well.
+			Type: block.TextVolumeRequestType,
 			Kind: controller.OutputShared,
 		},
 	}
@@ -146,17 +156,7 @@ func (ctrl *MountController) reconcile(ctx context.Context, runtime controller.R
 	// because it does not unmount anything by itself: the stopContainers phase runs before the
 	// unmount phases, so the volumes are still mounted for as long as the containers need them.
 	if containerLifecycle == nil || containerLifecycle.Metadata().Phase() == resource.PhaseTearingDown {
-		held, err := ctrl.releaseAll(ctx, runtime, logger)
-		if err != nil {
-			return err
-		}
-
-		heldDevices, err := ctrl.releaseAllDevices(ctx, runtime, logger, containerLifecycle)
-		if err != nil {
-			return err
-		}
-
-		return reconcileLifecycle(ctx, runtime, logger, containerLifecycle, ctrl.Name(), held+heldDevices == 0)
+		return ctrl.releaseForShutdown(ctx, runtime, logger, containerLifecycle)
 	}
 
 	containerSpecs, err := safe.ReaderListAll[*containers.ContainerSpec](ctx, runtime)
@@ -188,6 +188,7 @@ func (ctrl *MountController) reconcile(ctx context.Context, runtime controller.R
 	runtime.StartTrackingOutputs()
 
 	wanted := map[string]struct{}{}
+	wantedTextVolumes := map[string]struct{}{}
 	wantedHolds := map[string]map[string]struct{}{}
 
 	for containerSpec := range containerSpecs.All() {
@@ -195,7 +196,7 @@ func (ctrl *MountController) reconcile(ctx context.Context, runtime controller.R
 
 		_, isLive := live[containerSpecID]
 
-		resolvedMounts, mountsReady, reason, err := ctrl.reconcileContainer(ctx, runtime, logger, cfg, containerSpec, isLive, wanted)
+		resolvedMounts, mountsReady, reason, err := ctrl.reconcileContainer(ctx, runtime, logger, cfg, containerSpec, isLive, wanted, wantedTextVolumes)
 		if err != nil {
 			return err
 		}
@@ -226,6 +227,10 @@ func (ctrl *MountController) reconcile(ctx context.Context, runtime controller.R
 		return err
 	}
 
+	if _, err := ctrl.releaseUnwantedTextVolumes(ctx, runtime, logger, wantedTextVolumes, live); err != nil {
+		return err
+	}
+
 	// Before the devices are released, so that a container which is gone no longer has a status
 	// reporting its devices as resolved.
 	if err := safe.CleanupOutputs[*containers.ContainerMountStatus](ctx, runtime); err != nil {
@@ -236,7 +241,33 @@ func (ctrl *MountController) reconcile(ctx context.Context, runtime controller.R
 		return err
 	}
 
-	return reconcileLifecycle(ctx, runtime, logger, containerLifecycle, ctrl.Name(), len(wanted) == 0)
+	return reconcileLifecycle(ctx, runtime, logger, containerLifecycle, ctrl.Name(), len(wanted)+len(wantedTextVolumes) == 0)
+}
+
+// releaseForShutdown releases everything this controller holds, and lets the shutdown barrier go once
+// nothing is held any more.
+func (ctrl *MountController) releaseForShutdown(
+	ctx context.Context,
+	runtime controller.Runtime,
+	logger *zap.Logger,
+	containerLifecycle *containers.ContainerLifecycle,
+) error {
+	held, err := ctrl.releaseAll(ctx, runtime, logger)
+	if err != nil {
+		return err
+	}
+
+	heldTextVolumes, err := ctrl.releaseUnwantedTextVolumes(ctx, runtime, logger, nil, nil)
+	if err != nil {
+		return err
+	}
+
+	heldDevices, err := ctrl.releaseAllDevices(ctx, runtime, logger, containerLifecycle)
+	if err != nil {
+		return err
+	}
+
+	return reconcileLifecycle(ctx, runtime, logger, containerLifecycle, ctrl.Name(), held+heldTextVolumes+heldDevices == 0)
 }
 
 // joinReasons appends the device reasons to the mount reason.
@@ -297,6 +328,7 @@ func (ctrl *MountController) reconcileContainer(
 	containerSpec *containers.ContainerSpec,
 	isLive bool,
 	wanted map[string]struct{},
+	wantedTextVolumes map[string]struct{},
 ) (resolvedMounts []containers.ResolvedMountSpec, ready bool, reason string, err error) {
 	containerSpecID := containerSpec.Metadata().ID()
 	ready = true
@@ -304,7 +336,7 @@ func (ctrl *MountController) reconcileContainer(
 	var reasons []string
 
 	for _, containerMountSpec := range containerSpec.TypedSpec().Mounts {
-		if containerMountSpec.Kind != containers.MountKindVolume {
+		if containerMountSpec.Kind != containers.MountKindVolume && containerMountSpec.Kind != containers.MountKindTextVolume {
 			// tmpfs and hostPath need nothing from the block subsystem: the source is either nothing
 			// at all or a path which must already exist.
 			resolvedMounts = append(resolvedMounts, containers.ResolvedMountSpec{
@@ -320,26 +352,20 @@ func (ctrl *MountController) reconcileContainer(
 
 		volumeName := containerMountSpec.VolumeName
 
-		// Names are unique across user, existing and external volumes, so a name resolves to at most
-		// one volume ID. Validation rejects a name nothing declares; one reaches here only while the
-		// machine config is missing or validation was bypassed, and the container is held back until
-		// the volume is declared.
 		var (
-			backing  configcfg.BackingVolume
-			resolved bool
+			backing       configcfg.BackingVolume
+			pendingReason string
 		)
 
-		if cfg != nil {
-			backing, resolved = configcfg.ResolveBackingVolume(cfg, volumeName)
+		backing, pendingReason, err = ctrl.resolveVolume(ctx, runtime, cfg, containerSpecID, containerMountSpec, wantedTextVolumes)
+		if err != nil {
+			return nil, false, "", err
 		}
 
-		if !resolved {
+		if pendingReason != "" {
 			ready = false
 
-			reasons = append(
-				reasons,
-				fmt.Sprintf("no UserVolumeConfig, ExistingVolumeConfig or ExternalVolumeConfig named %q is configured", volumeName),
-			)
+			reasons = append(reasons, pendingReason)
 
 			continue
 		}
@@ -462,6 +488,119 @@ func (ctrl *MountController) reconcileContainer(
 	return resolvedMounts, ready, strings.Join(reasons, "; "), nil
 }
 
+// resolveVolume resolves the volume a volume or text volume mount names to the volume to mount.
+//
+// A user, existing or external volume resolves directly. A text volume is materialized for this
+// container alone: the container asks for an instance with a TextVolumeRequest, and mounts the
+// instance's volume once its files are written. The request ID is recorded in wantedTextVolumes.
+//
+// A non-empty reason means the volume cannot be mounted yet, and says why.
+func (ctrl *MountController) resolveVolume(
+	ctx context.Context,
+	runtime controller.Runtime,
+	cfg configcfg.Config,
+	containerSpecID string,
+	containerMountSpec containers.ContainerMountSpec,
+	wantedTextVolumes map[string]struct{},
+) (backing configcfg.BackingVolume, reason string, err error) {
+	volumeName := containerMountSpec.VolumeName
+
+	// Names are unique across user, existing and external volumes, so a name resolves to at most one
+	// volume. Validation rejects a name nothing declares; one reaches here only while the machine
+	// config is missing or validation was bypassed, and the container is held back until the volume is
+	// declared.
+	if containerMountSpec.Kind == containers.MountKindVolume {
+		if cfg != nil {
+			if backing, resolved := configcfg.ResolveBackingVolume(cfg, volumeName); resolved {
+				return backing, "", nil
+			}
+		}
+
+		return backing, fmt.Sprintf("no UserVolumeConfig, ExistingVolumeConfig or ExternalVolumeConfig named %q is configured", volumeName), nil
+	}
+
+	if reason = checkTextVolume(cfg, containerMountSpec); reason != "" {
+		return backing, reason, nil
+	}
+
+	requestID := ctrl.textVolumeRequestID(containerSpecID, volumeName)
+	wantedTextVolumes[requestID] = struct{}{}
+
+	if err = safe.WriterModify(ctx, runtime,
+		block.NewTextVolumeRequest(block.NamespaceName, requestID),
+		func(res *block.TextVolumeRequest) error {
+			res.Metadata().Labels().Set(containerLabel, containerSpecID)
+
+			res.TypedSpec().TextVolumeName = volumeName
+			res.TypedSpec().Requester = ctrl.Name()
+
+			return nil
+		},
+	); err != nil {
+		return backing, "", fmt.Errorf("failed to write text volume request %q: %w", requestID, err)
+	}
+
+	textVolumeStatus, err := safe.ReaderGetByID[*block.TextVolumeStatus](ctx, runtime, requestID)
+	if err != nil {
+		if state.IsNotFoundError(err) {
+			return backing, fmt.Sprintf("waiting for text volume %q to be written", volumeName), nil
+		}
+
+		return backing, "", fmt.Errorf("failed to get text volume status %q: %w", requestID, err)
+	}
+
+	if !textVolumeStatus.TypedSpec().Ready {
+		if textVolumeStatus.TypedSpec().Error != "" {
+			return backing, fmt.Sprintf("text volume %q: %s", volumeName, textVolumeStatus.TypedSpec().Error), nil
+		}
+
+		return backing, fmt.Sprintf("waiting for text volume %q to be written", volumeName), nil
+	}
+
+	// The instance is mounted secure (nosuid, nodev, noexec) by its writer, and requests are merged:
+	// asking for the same keeps the mount from being weakened while this request is the last one.
+	return configcfg.BackingVolume{
+		ID:       textVolumeStatus.TypedSpec().VolumeID,
+		ReadOnly: true,
+		Secure:   true,
+	}, "", nil
+}
+
+// checkTextVolume returns why a text volume mount cannot be set up, or an empty reason if it can.
+func checkTextVolume(cfg configcfg.Config, containerMountSpec containers.ContainerMountSpec) string {
+	volumeName := containerMountSpec.VolumeName
+
+	if cfg == nil {
+		return notConfiguredTextVolumeReason(volumeName)
+	}
+
+	if _, resolved := configcfg.ResolveTextVolume(cfg, volumeName); !resolved {
+		return notConfiguredTextVolumeReason(volumeName)
+	}
+
+	if !containerMountSpec.ReadOnly() {
+		// ConfigController always adds ro. The instance is mounted writable on the host for its
+		// writer, so a bind without ro would let the container change content owned by the machine
+		// configuration.
+		return fmt.Sprintf("text volume %q must be mounted read-only", volumeName)
+	}
+
+	return ""
+}
+
+// notConfiguredTextVolumeReason is the reason a container waits for a text volume nothing declares.
+func notConfiguredTextVolumeReason(volumeName string) string {
+	return fmt.Sprintf("no TextVolumeConfig named %q is configured", volumeName)
+}
+
+// textVolumeRequestID builds the ID of the text volume request for one container and text volume.
+//
+// Per container, so that every container gets an instance of its own. Slash-separated for the same
+// reason as mountRequestID.
+func (ctrl *MountController) textVolumeRequestID(containerSpecID, textVolumeName string) string {
+	return ctrl.Name() + "/" + containerSpecID + "/" + textVolumeName
+}
+
 // releaseUnwanted releases the mounts no container needs any more.
 func (ctrl *MountController) releaseUnwanted(
 	ctx context.Context,
@@ -501,6 +640,55 @@ func (ctrl *MountController) releaseUnwanted(
 	}
 
 	return nil
+}
+
+// releaseUnwantedTextVolumes drops the text volume requests no container needs any more, reporting
+// how many are still held.
+//
+// Dropping a request makes its writer tear the instance down, which waits for the container's own mount
+// of the instance to be released, so a request is kept for as long as the container may be running,
+// like the mount itself. With nil wanted and live (the node going down), every request is dropped.
+func (ctrl *MountController) releaseUnwantedTextVolumes(
+	ctx context.Context,
+	runtime controller.Runtime,
+	logger *zap.Logger,
+	wanted map[string]struct{},
+	live map[string]struct{},
+) (int, error) {
+	textVolumeRequests, err := safe.ReaderListAll[*block.TextVolumeRequest](ctx, runtime)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list text volume requests: %w", err)
+	}
+
+	held := 0
+
+	for textVolumeRequest := range textVolumeRequests.All() {
+		if textVolumeRequest.TypedSpec().Requester != ctrl.Name() {
+			continue
+		}
+
+		requestID := textVolumeRequest.Metadata().ID()
+
+		if _, stillWanted := wanted[requestID]; stillWanted {
+			continue
+		}
+
+		containerSpecID, _ := textVolumeRequest.Metadata().Labels().Get(containerLabel)
+
+		if _, isLive := live[containerSpecID]; isLive {
+			held++
+
+			continue
+		}
+
+		if err = runtime.Destroy(ctx, textVolumeRequest.Metadata()); err != nil && !state.IsNotFoundError(err) {
+			return 0, fmt.Errorf("failed to destroy text volume request %q: %w", requestID, err)
+		}
+
+		logger.Info("released text volume", zap.String("container", containerSpecID), zap.String("request", requestID))
+	}
+
+	return held, nil
 }
 
 // releaseAll releases every mount this controller holds, reporting how many are still held.

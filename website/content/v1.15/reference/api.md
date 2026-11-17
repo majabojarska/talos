@@ -449,6 +449,8 @@ description: Talos gRPC API reference.
     - [SymlinkSpec](#talos.resource.definitions.block.SymlinkSpec)
     - [SystemDiskSpec](#talos.resource.definitions.block.SystemDiskSpec)
     - [TPMEncryptionOptionsInfo](#talos.resource.definitions.block.TPMEncryptionOptionsInfo)
+    - [TextVolumeRequestSpec](#talos.resource.definitions.block.TextVolumeRequestSpec)
+    - [TextVolumeStatusSpec](#talos.resource.definitions.block.TextVolumeStatusSpec)
     - [TrimOptionsSpec](#talos.resource.definitions.block.TrimOptionsSpec)
     - [UserDiskConfigStatusSpec](#talos.resource.definitions.block.UserDiskConfigStatusSpec)
     - [VolumeConfigSpec](#talos.resource.definitions.block.VolumeConfigSpec)
@@ -7908,6 +7910,41 @@ TPMEncryptionOptionsInfo is the options for TPM-based encryption.
 
 
 
+<a name="talos.resource.definitions.block.TextVolumeRequestSpec"></a>
+
+### TextVolumeRequestSpec
+TextVolumeRequestSpec is the spec for TextVolumeRequest.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| text_volume_name | [string](#string) |  | TextVolumeName is the name of the TextVolumeConfig document. |
+| requester | [string](#string) |  | Requester is the name of the controller holding the request. |
+
+
+
+
+
+
+<a name="talos.resource.definitions.block.TextVolumeStatusSpec"></a>
+
+### TextVolumeStatusSpec
+TextVolumeStatusSpec is the spec for TextVolumeStatus.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| text_volume_name | [string](#string) |  | TextVolumeName is the name of the TextVolumeConfig document. |
+| volume_id | [string](#string) |  | VolumeID is the ID of the tmpfs volume holding the instance. |
+| ready | [bool](#bool) |  | Ready is set once the files have been written to the instance.<br><br>It stays set while the content is updated in place. |
+| content_hash | [string](#string) |  | ContentHash is the digest of the content currently written to the instance. |
+| error | [string](#string) |  | Error is the reason the content could not be written, if any. |
+
+
+
+
+
+
 <a name="talos.resource.definitions.block.TrimOptionsSpec"></a>
 
 ### TrimOptionsSpec
@@ -8497,12 +8534,12 @@ Exactly one of VolumeName, Tmpfs or HostPath describes the source; Kind says whi
 
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
-| kind | [string](#string) |  | Kind is one of "volume", "tmpfs" or "hostPath". |
+| kind | [string](#string) |  | Kind is one of "volume", "textVolume", "tmpfs" or "hostPath". |
 | source | [string](#string) |  | Source is the host path for a hostPath mount. |
 | destination | [string](#string) |  | Destination inside the container. |
 | size | [uint64](#uint64) |  | Size of a tmpfs mount, in bytes; zero means the kernel default. |
 | options | [string](#string) | repeated | Options with the writable default already applied. |
-| volume_name | [string](#string) |  | VolumeName is the name of the user, existing or external volume a volume mount refers to, e.g. "web-content". |
+| volume_name | [string](#string) |  | VolumeName is the name of the user, existing or external volume a volume mount refers to, or of the text volume a textVolume mount refers to, e.g. "web-content". |
 
 
 

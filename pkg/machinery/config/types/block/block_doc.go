@@ -936,6 +936,40 @@ func (SwapVolumeConfigV1Alpha1) Doc() *encoder.Doc {
 	return doc
 }
 
+func (TextVolumeConfigV1Alpha1) Doc() *encoder.Doc {
+	doc := &encoder.Doc{
+		Type:        "TextVolumeConfig",
+		Comments:    [3]string{"" /* encoder.HeadComment */, "TextVolumeConfig is a text volume configuration document." /* encoder.LineComment */, "" /* encoder.FootComment */},
+		Description: "TextVolumeConfig is a text volume configuration document.\nText volumes hold a set of text files given inline in the machine configuration.\n\nThe document does nothing on its own. Each consumer mounting it (e.g. a `ContainerConfig`\n`textVolume` mount) gets its own memory-backed copy of the files: no two consumers share an\ninode, even though the content is the same. The copy is always read-only, and its files\ncannot be executed directly. It is updated in place when the document changes, without\nrestarting the consumer.\n\nUnlike user, existing and external volumes, a text volume has no shared mount on the host\n(there is nothing at `/var/mnt/<name>`), so it has no mount settings.\n\nThe content is never written to persistent storage, but it is stored in the machine\nconfiguration verbatim, so treat it as being as sensitive as the machine configuration itself.\n\nThe name must not be taken by a user, existing or external volume.\n",
+		Fields: []encoder.Doc{
+			{
+				Type:   "Meta",
+				Inline: true,
+			},
+			{
+				Name:        "name",
+				Type:        "string",
+				Note:        "",
+				Description: "Name of the volume.\n\nName can only contain:\nlowercase and uppercase ASCII letters, digits, and hyphens.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Name of the volume." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+			{
+				Name:        "files",
+				Type:        "map[string]string",
+				Note:        "",
+				Description: "Files in the volume, keyed by a path relative to the volume root.\n\nA path containing a slash creates subdirectories. Paths must be relative and may not\nescape the volume with `..`, and names starting with `.talos-` are reserved. Content must\nbe valid UTF-8; files are created with mode `0644` and directories with `0755`.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Files in the volume, keyed by a path relative to the volume root." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+		},
+	}
+
+	doc.AddExample("", exampleTextVolumeConfigV1Alpha1())
+
+	doc.Fields[2].AddExample("", exampleTextVolumeFiles())
+
+	return doc
+}
+
 func (TrimConfig) Doc() *encoder.Doc {
 	doc := &encoder.Doc{
 		Type:        "TrimConfig",
@@ -1463,6 +1497,7 @@ func GetFileDoc() *encoder.FileDoc {
 			RawVolumeConfigV1Alpha1{}.Doc(),
 			ScrubConfig{}.Doc(),
 			SwapVolumeConfigV1Alpha1{}.Doc(),
+			TextVolumeConfigV1Alpha1{}.Doc(),
 			TrimConfig{}.Doc(),
 			UserVolumeConfigV1Alpha1{}.Doc(),
 			UserMountSpec{}.Doc(),

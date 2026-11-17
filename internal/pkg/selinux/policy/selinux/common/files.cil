@@ -7,6 +7,12 @@
 (call system_f (system_run_t))
 (allow system_run_t tmpfs_t (filesystem (associate)))
 
+; Text volumes: tmpfs instances under /system/text-volumes, holding the files of a
+; TextVolumeConfig document, written by machined and handed to consumers read-only.
+(type text_volume_t)
+(call system_f (text_volume_t))
+(allow text_volume_t tmpfs_t (filesystem (associate)))
+
 (type system_run_containerd_t)
 (call system_f (system_run_containerd_t))
 (allow system_run_containerd_t tmpfs_t (filesystem (associate)))

@@ -893,6 +893,54 @@
       "type": "object",
       "description": "SystemVolumeFilesystemSpec describes how the system volume is formatted.\\n\\nThe filesystem type is fixed for system volumes, and project quota support is configured via\\nmachine features, so only the filesystem-specific tunables are exposed here.\\n"
     },
+    "block.TextVolumeConfigV1Alpha1": {
+      "properties": {
+        "apiVersion": {
+          "enum": [
+            "v1alpha1"
+          ],
+          "title": "apiVersion",
+          "description": "apiVersion is the API version of the resource.\n",
+          "markdownDescription": "apiVersion is the API version of the resource.",
+          "x-intellij-html-description": "\u003cp\u003eapiVersion is the API version of the resource.\u003c/p\u003e\n"
+        },
+        "kind": {
+          "enum": [
+            "TextVolumeConfig"
+          ],
+          "title": "kind",
+          "description": "kind is the kind of the resource.\n",
+          "markdownDescription": "kind is the kind of the resource.",
+          "x-intellij-html-description": "\u003cp\u003ekind is the kind of the resource.\u003c/p\u003e\n"
+        },
+        "name": {
+          "type": "string",
+          "title": "name",
+          "description": "Name of the volume.\n\nName can only contain:\nlowercase and uppercase ASCII letters, digits, and hyphens.\n",
+          "markdownDescription": "Name of the volume.\n\nName can only contain:\nlowercase and uppercase ASCII letters, digits, and hyphens.",
+          "x-intellij-html-description": "\u003cp\u003eName of the volume.\u003c/p\u003e\n\n\u003cp\u003eName can only contain:\nlowercase and uppercase ASCII letters, digits, and hyphens.\u003c/p\u003e\n"
+        },
+        "files": {
+          "patternProperties": {
+            ".*": {
+              "type": "string"
+            }
+          },
+          "type": "object",
+          "title": "files",
+          "description": "Files in the volume, keyed by a path relative to the volume root.\n\nA path containing a slash creates subdirectories. Paths must be relative and may not\nescape the volume with .., and names starting with .talos- are reserved. Content must\nbe valid UTF-8; files are created with mode 0644 and directories with 0755.\n",
+          "markdownDescription": "Files in the volume, keyed by a path relative to the volume root.\n\nA path containing a slash creates subdirectories. Paths must be relative and may not\nescape the volume with `..`, and names starting with `.talos-` are reserved. Content must\nbe valid UTF-8; files are created with mode `0644` and directories with `0755`.",
+          "x-intellij-html-description": "\u003cp\u003eFiles in the volume, keyed by a path relative to the volume root.\u003c/p\u003e\n\n\u003cp\u003eA path containing a slash creates subdirectories. Paths must be relative and may not\nescape the volume with \u003ccode\u003e..\u003c/code\u003e, and names starting with \u003ccode\u003e.talos-\u003c/code\u003e are reserved. Content must\nbe valid UTF-8; files are created with mode \u003ccode\u003e0644\u003c/code\u003e and directories with \u003ccode\u003e0755\u003c/code\u003e.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "kind"
+      ],
+      "description": "TextVolumeConfig is a text volume configuration document.\\nText volumes hold a set of text files given inline in the machine configuration.\\n\\nThe document does nothing on its own. Each consumer mounting it (e.g. a `ContainerConfig`\\n`textVolume` mount) gets its own memory-backed copy of the files: no two consumers share an\\ninode, even though the content is the same. The copy is always read-only, and its files\\ncannot be executed directly. It is updated in place when the document changes, without\\nrestarting the consumer.\\n\\nUnlike user, existing and external volumes, a text volume has no shared mount on the host\\n(there is nothing at `/var/mnt/\u003cname\u003e`), so it has no mount settings.\\n\\nThe content is never written to persistent storage, but it is stored in the machine\\nconfiguration verbatim, so treat it as being as sensitive as the machine configuration itself.\\n\\nThe name must not be taken by a user, existing or external volume.\\n"
+    },
     "block.TrimConfig": {
       "properties": {
         "enabled": {
@@ -1761,6 +1809,13 @@
           "markdownDescription": "Mount a user, existing or external volume by name.\n\nThe name is that of a `UserVolumeConfig`, `ExistingVolumeConfig` or\n`ExternalVolumeConfig` document. Volume names are unique across those kinds, so the\nname resolves to one volume. The volume must be declared in the same configuration.\n\nThe volume is mounted from `/var/mnt/\u003cname\u003e` on the host. Declaring this mount also\nmakes the container wait for the volume to be mounted before it starts.",
           "x-intellij-html-description": "\u003cp\u003eMount a user, existing or external volume by name.\u003c/p\u003e\n\n\u003cp\u003eThe name is that of a \u003ccode\u003eUserVolumeConfig\u003c/code\u003e, \u003ccode\u003eExistingVolumeConfig\u003c/code\u003e or\n\u003ccode\u003eExternalVolumeConfig\u003c/code\u003e document. Volume names are unique across those kinds, so the\nname resolves to one volume. The volume must be declared in the same configuration.\u003c/p\u003e\n\n\u003cp\u003eThe volume is mounted from \u003ccode\u003e/var/mnt/\u0026lt;name\u0026gt;\u003c/code\u003e on the host. Declaring this mount also\nmakes the container wait for the volume to be mounted before it starts.\u003c/p\u003e\n"
         },
+        "textVolume": {
+          "$ref": "#/$defs/container.TextVolumeMount",
+          "title": "textVolume",
+          "description": "Mount a text volume by name.\n\nThe name is that of a TextVolumeConfig document. The container gets a copy of the\nfiles of its own, on a tmpfs of its own: no two containers share an inode. The copy is\nalways read-only, and its files cannot be executed directly (run a script with its\ninterpreter instead, e.g. sh script.sh). It is updated in place when the document\nchanges, without restarting the container.\n\nDeclaring this mount also makes the container wait for the files to be written before\nit starts.\n",
+          "markdownDescription": "Mount a text volume by name.\n\nThe name is that of a `TextVolumeConfig` document. The container gets a copy of the\nfiles of its own, on a tmpfs of its own: no two containers share an inode. The copy is\nalways read-only, and its files cannot be executed directly (run a script with its\ninterpreter instead, e.g. `sh script.sh`). It is updated in place when the document\nchanges, without restarting the container.\n\nDeclaring this mount also makes the container wait for the files to be written before\nit starts.",
+          "x-intellij-html-description": "\u003cp\u003eMount a text volume by name.\u003c/p\u003e\n\n\u003cp\u003eThe name is that of a \u003ccode\u003eTextVolumeConfig\u003c/code\u003e document. The container gets a copy of the\nfiles of its own, on a tmpfs of its own: no two containers share an inode. The copy is\nalways read-only, and its files cannot be executed directly (run a script with its\ninterpreter instead, e.g. \u003ccode\u003esh script.sh\u003c/code\u003e). It is updated in place when the document\nchanges, without restarting the container.\u003c/p\u003e\n\n\u003cp\u003eDeclaring this mount also makes the container wait for the files to be written before\nit starts.\u003c/p\u003e\n"
+        },
         "tmpfs": {
           "$ref": "#/$defs/container.TmpfsMount",
           "title": "tmpfs",
@@ -1771,9 +1826,9 @@
         "hostPath": {
           "$ref": "#/$defs/container.HostPathMount",
           "title": "hostPath",
-          "description": "Bind-mount a path from the host.\n\nThe source must already exist; Talos will not create it. This is the widest of the\nthree sources and the only one that can reach arbitrary host state.\n",
-          "markdownDescription": "Bind-mount a path from the host.\n\nThe source must already exist; Talos will not create it. This is the widest of the\nthree sources and the only one that can reach arbitrary host state.",
-          "x-intellij-html-description": "\u003cp\u003eBind-mount a path from the host.\u003c/p\u003e\n\n\u003cp\u003eThe source must already exist; Talos will not create it. This is the widest of the\nthree sources and the only one that can reach arbitrary host state.\u003c/p\u003e\n"
+          "description": "Bind-mount a path from the host.\n\nThe source must already exist; Talos will not create it. This is the widest of the\nsources and the only one that can reach arbitrary host state.\n",
+          "markdownDescription": "Bind-mount a path from the host.\n\nThe source must already exist; Talos will not create it. This is the widest of the\nsources and the only one that can reach arbitrary host state.",
+          "x-intellij-html-description": "\u003cp\u003eBind-mount a path from the host.\u003c/p\u003e\n\n\u003cp\u003eThe source must already exist; Talos will not create it. This is the widest of the\nsources and the only one that can reach arbitrary host state.\u003c/p\u003e\n"
         }
       },
       "additionalProperties": false,
@@ -2033,6 +2088,27 @@
       "additionalProperties": false,
       "type": "object",
       "description": "RawVolumeDevice hands a raw volume to the container by name."
+    },
+    "container.TextVolumeMount": {
+      "properties": {
+        "name": {
+          "type": "string",
+          "title": "name",
+          "description": "Name of the TextVolumeConfig document.\n",
+          "markdownDescription": "Name of the `TextVolumeConfig` document.",
+          "x-intellij-html-description": "\u003cp\u003eName of the \u003ccode\u003eTextVolumeConfig\u003c/code\u003e document.\u003c/p\u003e\n"
+        },
+        "destination": {
+          "type": "string",
+          "title": "destination",
+          "description": "Absolute path inside the container’s mount namespace.\n",
+          "markdownDescription": "Absolute path inside the container's mount namespace.",
+          "x-intellij-html-description": "\u003cp\u003eAbsolute path inside the container\u0026rsquo;s mount namespace.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "TextVolumeMount mounts a text volume."
     },
     "container.TmpfsMount": {
       "properties": {
@@ -10100,6 +10176,9 @@
     },
     {
       "$ref": "#/$defs/block.SwapVolumeConfigV1Alpha1"
+    },
+    {
+      "$ref": "#/$defs/block.TextVolumeConfigV1Alpha1"
     },
     {
       "$ref": "#/$defs/block.UserVolumeConfigV1Alpha1"

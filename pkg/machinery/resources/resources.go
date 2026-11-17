@@ -80,6 +80,8 @@ func All() []meta.ResourceWithRD {
 		&block.SwapStatus{},
 		&block.Symlink{},
 		&block.SystemDisk{},
+		&block.TextVolumeRequest{},
+		&block.TextVolumeStatus{},
 		&block.UserDiskConfigStatus{},
 		&block.VolumeConfig{},
 		&block.VolumeLifecycle{},

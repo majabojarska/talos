@@ -11,8 +11,33 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/siderolabs/talos/pkg/machinery/config/config"
+	blockcfg "github.com/siderolabs/talos/pkg/machinery/config/types/block"
 	containercfg "github.com/siderolabs/talos/pkg/machinery/config/types/container"
 )
+
+// newTextVolumeDoc builds a TextVolumeConfig document with a single file.
+func newTextVolumeDoc(name string) *blockcfg.TextVolumeConfigV1Alpha1 {
+	doc := blockcfg.NewTextVolumeConfigV1Alpha1()
+	doc.MetaName = name
+	doc.FilesSpec = map[string]string{"app.conf": "key=value\n"}
+
+	return doc
+}
+
+// newTextVolumeMountContainerDoc builds a ContainerConfig document mounting the named text volume.
+func newTextVolumeMountContainerDoc(name string) *containercfg.ContainerConfigV1Alpha1 {
+	doc := newVolumeMountContainerDoc(name)
+	doc.MountsConfig = []containercfg.ContainerMount{
+		{
+			TextVolumeMount: &containercfg.TextVolumeMount{
+				VolumeName:       name,
+				MountDestination: "/etc/app",
+			},
+		},
+	}
+
+	return doc
+}
 
 // newVolumeMountContainerDoc builds a ContainerConfig document mounting the named volume.
 func newVolumeMountContainerDoc(volumeName string, options ...string) *containercfg.ContainerConfigV1Alpha1 {
@@ -93,6 +118,43 @@ func TestContainerVolumeMounts(t *testing.T) {
 			},
 			expectedErrs: []string{
 				`container "app": mounts[0]: no UserVolumeConfig, ExistingVolumeConfig or ExternalVolumeConfig declares volume "u-data"`,
+			},
+		},
+		{
+			name: "text volume",
+			docs: []config.Document{
+				newTextVolumeDoc("app-config"),
+				newTextVolumeMountContainerDoc("app-config"),
+			},
+		},
+		{
+			name: "text volume not configured",
+			docs: []config.Document{
+				newTextVolumeMountContainerDoc("nowhere"),
+			},
+			expectedErrs: []string{
+				`container "app": mounts[0]: no TextVolumeConfig declares text volume "nowhere"`,
+			},
+		},
+		{
+			// A text volume has a mount source of its own, which says it is read-only and a copy.
+			name: "text volume mounted as a volume",
+			docs: []config.Document{
+				newTextVolumeDoc("app-config"),
+				newVolumeMountContainerDoc("app-config", "ro"),
+			},
+			expectedErrs: []string{
+				`container "app": mounts[0]: volume "app-config" is a TextVolumeConfig, so it must be mounted with textVolume`,
+			},
+		},
+		{
+			name: "user volume mounted as a text volume",
+			docs: []config.Document{
+				newUserVolumeDoc("data"),
+				newTextVolumeMountContainerDoc("data"),
+			},
+			expectedErrs: []string{
+				`container "app": mounts[0]: no TextVolumeConfig declares text volume "data"`,
 			},
 		},
 		{

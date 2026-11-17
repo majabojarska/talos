@@ -1,0 +1,9 @@
+apiVersion: v1alpha1
+kind: TextVolumeConfig
+name: app-config
+files:
+    app.conf: |
+        [server]
+        listen=:8080
+    conf.d/log.ini: |
+        level=info

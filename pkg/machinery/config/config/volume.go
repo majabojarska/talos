@@ -229,6 +229,28 @@ type ExternalVolumeConfig interface {
 	Mount() ExternalVolumeMountConfig
 }
 
+// TextVolumeConfig defines the interface to access text volume configuration.
+type TextVolumeConfig interface {
+	NamedDocument
+	TextVolumeConfigSignal()
+	// Files keyed by a path relative to the volume root.
+	Files() map[string]string
+}
+
+// ResolveTextVolume looks up a text volume by document name.
+//
+// Text volume names share a namespace with user, existing and external volumes, so a name resolves
+// either here or through ResolveBackingVolume, never both.
+func ResolveTextVolume(cfg Config, name string) (TextVolumeConfig, bool) {
+	for _, volume := range cfg.TextVolumeConfigs() {
+		if volume.Name() == name {
+			return volume, true
+		}
+	}
+
+	return nil, false
+}
+
 // VolumeDiscoveryConfig defines the interface to discover volumes.
 //
 //nolint:iface

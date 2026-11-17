@@ -1584,6 +1584,22 @@ const (
 	// SwapVolumePrefix is the prefix for the swap volumes.
 	SwapVolumePrefix = "s-"
 
+	// TextVolumePrefix is the prefix for the instances of text volumes.
+	TextVolumePrefix = "t-"
+
+	// TextVolumeMountPoint is the directory the instances of text volumes are mounted under.
+	//
+	// Under /system, which is itself a tmpfs: text volumes are rebuilt from the machine configuration
+	// on every boot and never written to persistent storage.
+	TextVolumeMountPoint = SystemPath + "/text-volumes"
+
+	// TextVolumeSelinuxLabel is the SELinux label of the files in text volumes.
+	//
+	// A type of its own rather than the generic system_t of /system: text volumes are handed to
+	// consumers (e.g. Talos containers) which may read them, and a separate type keeps that grant from
+	// widening to the rest of the directory.
+	TextVolumeSelinuxLabel = "system_u:object_r:text_volume_t:s0"
+
 	// ContainerServicePIDPrefix distinguishes container PIDs from Talos service PIDs in the ServicePID
 	// namespace, parallel to the "ext-" prefix extension services use, so an AllowedServices glob can
 	// target containers without risking a collision with an unrelated service name.

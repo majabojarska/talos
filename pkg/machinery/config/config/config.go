@@ -88,6 +88,7 @@ type Config interface { //nolint:interfacebloat
 	ExistingVolumeConfigs() []ExistingVolumeConfig
 	ExternalVolumeConfigs() []ExternalVolumeConfig
 	SwapVolumeConfigs() []SwapVolumeConfig
+	TextVolumeConfigs() []TextVolumeConfig
 	ZswapConfig() ZswapConfig
 	FilesystemTrimConfig() FilesystemTrimConfig
 	FilesystemScrubConfig() FilesystemScrubConfig

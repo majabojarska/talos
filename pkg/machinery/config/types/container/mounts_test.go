@@ -160,7 +160,7 @@ func TestContainerMountValidate(t *testing.T) {
 		{
 			name:        "no source set",
 			mount:       container.ContainerMount{},
-			expectedErr: "exactly one of volume, tmpfs or hostPath must be set",
+			expectedErr: "exactly one of volume, textVolume, tmpfs or hostPath must be set",
 		},
 		{
 			name: "two sources set",
@@ -168,7 +168,7 @@ func TestContainerMountValidate(t *testing.T) {
 				TmpfsMount:    &container.TmpfsMount{MountDestination: "/tmp"},
 				HostPathMount: &container.HostPathMount{MountSource: "/dev", MountDestination: "/dev"},
 			},
-			expectedErr: "exactly one of volume, tmpfs or hostPath must be set",
+			expectedErr: "exactly one of volume, textVolume, tmpfs or hostPath must be set",
 		},
 		{
 			name: "three sources set",
@@ -177,7 +177,7 @@ func TestContainerMountValidate(t *testing.T) {
 				TmpfsMount:    &container.TmpfsMount{MountDestination: "/tmp"},
 				HostPathMount: &container.HostPathMount{MountSource: "/dev", MountDestination: "/dev"},
 			},
-			expectedErr: "exactly one of volume, tmpfs or hostPath must be set",
+			expectedErr: "exactly one of volume, textVolume, tmpfs or hostPath must be set",
 		},
 		{
 			name: "deprecated userVolume and tmpfs set",
@@ -185,7 +185,7 @@ func TestContainerMountValidate(t *testing.T) {
 				UserVolumeMount: &container.VolumeMount{VolumeName: "data", MountDestination: "/data"},
 				TmpfsMount:      &container.TmpfsMount{MountDestination: "/tmp"},
 			},
-			expectedErr: "exactly one of volume, tmpfs or hostPath must be set",
+			expectedErr: "exactly one of volume, textVolume, tmpfs or hostPath must be set",
 		},
 		{
 			name: "valid deprecated userVolume",

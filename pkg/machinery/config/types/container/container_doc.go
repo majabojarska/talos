@@ -419,6 +419,13 @@ func (ContainerMount) Doc() *encoder.Doc {
 			},
 			{},
 			{
+				Name:        "textVolume",
+				Type:        "TextVolumeMount",
+				Note:        "",
+				Description: "Mount a text volume by name.\n\nThe name is that of a `TextVolumeConfig` document. The container gets a copy of the\nfiles of its own, on a tmpfs of its own: no two containers share an inode. The copy is\nalways read-only, and its files cannot be executed directly (run a script with its\ninterpreter instead, e.g. `sh script.sh`). It is updated in place when the document\nchanges, without restarting the container.\n\nDeclaring this mount also makes the container wait for the files to be written before\nit starts.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Mount a text volume by name." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+			{
 				Name:        "tmpfs",
 				Type:        "TmpfsMount",
 				Note:        "",
@@ -429,7 +436,7 @@ func (ContainerMount) Doc() *encoder.Doc {
 				Name:        "hostPath",
 				Type:        "HostPathMount",
 				Note:        "",
-				Description: "Bind-mount a path from the host.\n\nThe source must already exist; Talos will not create it. This is the widest of the\nthree sources and the only one that can reach arbitrary host state.",
+				Description: "Bind-mount a path from the host.\n\nThe source must already exist; Talos will not create it. This is the widest of the\nsources and the only one that can reach arbitrary host state.",
 				Comments:    [3]string{"" /* encoder.HeadComment */, "Bind-mount a path from the host." /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
 		},
@@ -480,6 +487,38 @@ func (VolumeMount) Doc() *encoder.Doc {
 					"rbind",
 					"rshared",
 				},
+			},
+		},
+	}
+
+	return doc
+}
+
+func (TextVolumeMount) Doc() *encoder.Doc {
+	doc := &encoder.Doc{
+		Type:        "TextVolumeMount",
+		Comments:    [3]string{"" /* encoder.HeadComment */, "TextVolumeMount mounts a text volume." /* encoder.LineComment */, "" /* encoder.FootComment */},
+		Description: "TextVolumeMount mounts a text volume.",
+		AppearsIn: []encoder.Appearance{
+			{
+				TypeName:  "ContainerMount",
+				FieldName: "textVolume",
+			},
+		},
+		Fields: []encoder.Doc{
+			{
+				Name:        "name",
+				Type:        "string",
+				Note:        "",
+				Description: "Name of the `TextVolumeConfig` document.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Name of the `TextVolumeConfig` document." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+			{
+				Name:        "destination",
+				Type:        "string",
+				Note:        "",
+				Description: "Absolute path inside the container's mount namespace.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Absolute path inside the container's mount namespace." /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
 		},
 	}
@@ -999,6 +1038,7 @@ func GetFileDoc() *encoder.FileDoc {
 			ContainerLifecycle{}.Doc(),
 			ContainerMount{}.Doc(),
 			VolumeMount{}.Doc(),
+			TextVolumeMount{}.Doc(),
 			TmpfsMount{}.Doc(),
 			HostPathMount{}.Doc(),
 			ContainerRestart{}.Doc(),

@@ -651,3 +651,167 @@ func (suite *MountSuite) TestReleasesEverythingOnLifecycleTeardown() {
 
 	ctest.AssertNoResource[*block.VolumeMountRequest](suite, testRequestID)
 }
+
+// textVolumeName is the text volume the text volume tests mount.
+const textVolumeName = "app-config"
+
+// textVolumeRequestID mirrors the controller's naming for the text volume request of mountContainer.
+var textVolumeRequestID = mountControllerName + "/" + mountContainer + "/" + textVolumeName
+
+func (suite *MountSuite) declareTextVolume() {
+	doc := blockcfg.NewTextVolumeConfigV1Alpha1()
+	doc.MetaName = textVolumeName
+	doc.FilesSpec = map[string]string{"app.conf": "a=1\n"}
+
+	suite.replaceVolumes(doc)
+}
+
+func (suite *MountSuite) textVolumeMount(options ...string) containers.ContainerMountSpec {
+	return containers.ContainerMountSpec{
+		Kind:        containers.MountKindTextVolume,
+		VolumeName:  textVolumeName,
+		Destination: "/etc/app",
+		Options:     options,
+	}
+}
+
+// writeTextVolume stands in for the text volume controller reporting the instance as written.
+func (suite *MountSuite) writeTextVolume(volumeID string) {
+	status := block.NewTextVolumeStatus(block.NamespaceName, textVolumeRequestID)
+	status.TypedSpec().TextVolumeName = textVolumeName
+	status.TypedSpec().VolumeID = volumeID
+	status.TypedSpec().Ready = true
+
+	suite.Require().NoError(suite.State().Create(suite.Ctx(), status))
+}
+
+// TestRequestsAndResolvesTextVolume covers a text volume: an instance of its own is requested for
+// the container, and mounted read-only once its files are written.
+func (suite *MountSuite) TestRequestsAndResolvesTextVolume() {
+	suite.declareTextVolume()
+	suite.createSpec(suite.textVolumeMount("ro"))
+
+	ctest.AssertResource(suite, textVolumeRequestID, func(request *block.TextVolumeRequest, asrt *assert.Assertions) {
+		asrt.Equal(textVolumeName, request.TypedSpec().TextVolumeName)
+		asrt.Equal(mountControllerName, request.TypedSpec().Requester)
+	})
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.False(status.TypedSpec().Ready)
+		asrt.Equal(`waiting for text volume "app-config" to be written`, status.TypedSpec().Error)
+	})
+
+	const instanceVolumeID = "t-app-config-0123456789ab"
+
+	suite.writeTextVolume(instanceVolumeID)
+
+	mountRequestID := mountControllerName + "/" + mountContainer + "/" + instanceVolumeID
+
+	ctest.AssertResource(suite, mountRequestID, func(request *block.VolumeMountRequest, asrt *assert.Assertions) {
+		asrt.Equal(instanceVolumeID, request.TypedSpec().VolumeID)
+		asrt.True(request.TypedSpec().ReadOnly)
+		asrt.True(request.TypedSpec().Secure)
+		asrt.True(request.TypedSpec().NoExec)
+	})
+
+	suite.satisfyMountFor(mountRequestID, instanceVolumeID, true)
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.True(status.TypedSpec().Ready, "error: %q", status.TypedSpec().Error)
+		asrt.Equal([]containers.ResolvedMountSpec{
+			{
+				Kind:        containers.MountKindTextVolume,
+				Source:      testVolumeTarget,
+				Destination: "/etc/app",
+				Options:     []string{"ro"},
+				VolumeID:    instanceVolumeID,
+				VolumeName:  textVolumeName,
+			},
+		}, status.TypedSpec().Mounts)
+	})
+
+	// the container going away releases both the mount and the instance
+	suite.Require().NoError(suite.State().Destroy(suite.Ctx(),
+		containers.NewContainerSpec(containers.NamespaceName, mountContainer).Metadata()))
+
+	ctest.AssertNoResource[*block.VolumeMountRequest](suite, mountRequestID)
+	ctest.AssertNoResource[*block.TextVolumeRequest](suite, textVolumeRequestID)
+}
+
+// TestTextVolumeReportsWriterError covers the writer failing to set up the instance.
+func (suite *MountSuite) TestTextVolumeReportsWriterError() {
+	suite.declareTextVolume()
+	suite.createSpec(suite.textVolumeMount("ro"))
+
+	ctest.AssertResource(suite, textVolumeRequestID, func(*block.TextVolumeRequest, *assert.Assertions) {})
+
+	status := block.NewTextVolumeStatus(block.NamespaceName, textVolumeRequestID)
+	status.TypedSpec().Error = "disk on fire"
+	suite.Require().NoError(suite.State().Create(suite.Ctx(), status))
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.False(status.TypedSpec().Ready)
+		asrt.Equal(`text volume "app-config": disk on fire`, status.TypedSpec().Error)
+	})
+}
+
+// TestTextVolumeMustBeReadOnly covers a text volume mount without ro, which validation rejects: the
+// container is held back rather than given a writable view of content owned by the machine config.
+func (suite *MountSuite) TestTextVolumeMustBeReadOnly() {
+	suite.declareTextVolume()
+	suite.createSpec(suite.textVolumeMount())
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.False(status.TypedSpec().Ready)
+		asrt.Equal(`text volume "app-config" must be mounted read-only`, status.TypedSpec().Error)
+	})
+
+	ctest.AssertNoResource[*block.TextVolumeRequest](suite, textVolumeRequestID)
+}
+
+// TestKeepsTextVolumeWhileInstanceIsLive covers a text volume dropped from the spec while the
+// container still runs with it: the instance stays until the container stops.
+func (suite *MountSuite) TestKeepsTextVolumeWhileInstanceIsLive() {
+	suite.declareTextVolume()
+	suite.createSpec(suite.textVolumeMount("ro"))
+
+	ctest.AssertResource(suite, textVolumeRequestID, func(*block.TextVolumeRequest, *assert.Assertions) {})
+
+	suite.createInstance()
+
+	ctest.UpdateWithConflicts(suite, containers.NewContainerSpec(containers.NamespaceName, mountContainer),
+		func(spec *containers.ContainerSpec) error {
+			spec.TypedSpec().Mounts = nil
+
+			return nil
+		})
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.Empty(status.TypedSpec().Mounts)
+	})
+
+	ctest.AssertResource(suite, textVolumeRequestID, func(*block.TextVolumeRequest, *assert.Assertions) {})
+
+	suite.finishInstance()
+
+	ctest.AssertNoResource[*block.TextVolumeRequest](suite, textVolumeRequestID)
+}
+
+// TestVolumeMountDoesNotResolveTextVolume covers a volume mount naming a text volume, which validation
+// rejects: a text volume is only mounted through a textVolume mount.
+func (suite *MountSuite) TestVolumeMountDoesNotResolveTextVolume() {
+	suite.declareTextVolume()
+	suite.createSpec(containers.ContainerMountSpec{
+		Kind:        containers.MountKindVolume,
+		VolumeName:  textVolumeName,
+		Destination: "/etc/app",
+		Options:     []string{"ro"},
+	})
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.False(status.TypedSpec().Ready)
+		asrt.Equal(`no UserVolumeConfig, ExistingVolumeConfig or ExternalVolumeConfig named "app-config" is configured`, status.TypedSpec().Error)
+	})
+
+	ctest.AssertNoResource[*block.TextVolumeRequest](suite, textVolumeRequestID)
+}

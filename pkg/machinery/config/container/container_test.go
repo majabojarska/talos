@@ -157,6 +157,19 @@ func TestNewConflict(t *testing.T) {
 
 	_, err = container.New(xv1, uv2)
 	require.NoError(t, err)
+
+	// Text volumes are referred to by name from the same container volume mounts.
+	cv1 := block.NewTextVolumeConfigV1Alpha1()
+	cv1.MetaName = "my-user-volume-1"
+
+	_, err = container.New(uv1, cv1)
+	assert.EqualError(t, err, "conflicting documents: UserVolumeConfig/my-user-volume-1 and TextVolumeConfig/my-user-volume-1")
+
+	_, err = container.New(cv1, xv1)
+	assert.EqualError(t, err, "conflicting documents: TextVolumeConfig/my-user-volume-1 and ExternalVolumeConfig/my-user-volume-1")
+
+	_, err = container.New(cv1, uv2)
+	require.NoError(t, err)
 }
 
 func TestCRICustomizationConfigs(t *testing.T) {

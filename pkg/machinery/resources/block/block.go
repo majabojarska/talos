@@ -20,7 +20,7 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/resources/v1alpha1"
 )
 
-//go:generate go tool github.com/siderolabs/deep-copy -type DeviceSpec -type DiscoveredVolumeSpec -type DiscoveredVolumesStatusSpec -type DiscoveryRefreshRequestSpec -type DiscoveryRefreshStatusSpec -type DiskSpec -type FSScrubScheduleSpec -type FSScrubStatusSpec -type MountRequestSpec -type MountStatusSpec -type ParameterSpec -type SMARTStatusSpec -type SwapStatusSpec -type SymlinkSpec -type SystemDiskSpec -type UserDiskConfigStatusSpec -type VolumeConfigSpec -type VolumeLifecycleSpec -type VolumeMountRequestSpec -type VolumeMountStatusSpec -type VolumeStatusSpec -type VolumeTrimScheduleSpec -type ZswapStatusSpec -header-file ../../../../hack/boilerplate.txt -o deep_copy.generated.go .
+//go:generate go tool github.com/siderolabs/deep-copy -type DeviceSpec -type DiscoveredVolumeSpec -type DiscoveredVolumesStatusSpec -type DiscoveryRefreshRequestSpec -type DiscoveryRefreshStatusSpec -type DiskSpec -type FSScrubScheduleSpec -type FSScrubStatusSpec -type MountRequestSpec -type MountStatusSpec -type ParameterSpec -type SMARTStatusSpec -type SwapStatusSpec -type SymlinkSpec -type SystemDiskSpec -type TextVolumeRequestSpec -type TextVolumeStatusSpec -type UserDiskConfigStatusSpec -type VolumeConfigSpec -type VolumeLifecycleSpec -type VolumeMountRequestSpec -type VolumeMountStatusSpec -type VolumeStatusSpec -type VolumeTrimScheduleSpec -type ZswapStatusSpec -header-file ../../../../hack/boilerplate.txt -o deep_copy.generated.go .
 
 //go:generate go tool github.com/siderolabs/talos/tools/redactgen -header-file ../../../../hack/boilerplate.txt -o redact.generated.go .
 
@@ -49,6 +49,9 @@ const ExternalVolumeLabel = "talos.dev/external-volume"
 
 // SwapVolumeLabel is the label for swap volumes.
 const SwapVolumeLabel = "talos.dev/swap-volume"
+
+// TextVolumeLabel is the label for the instances of text volumes.
+const TextVolumeLabel = "talos.dev/text-volume"
 
 // PlatformLabel is the label for platform volumes.
 const PlatformLabel = "talos.dev/platform"

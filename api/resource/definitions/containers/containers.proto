@@ -145,7 +145,7 @@ message ContainerLifecycleSpec {
 //
 // Exactly one of VolumeName, Tmpfs or HostPath describes the source; Kind says which.
 message ContainerMountSpec {
-  // Kind is one of "volume", "tmpfs" or "hostPath".
+  // Kind is one of "volume", "textVolume", "tmpfs" or "hostPath".
   string kind = 1;
   // Source is the host path for a hostPath mount.
   string source = 3;
@@ -156,7 +156,7 @@ message ContainerMountSpec {
   // Options with the writable default already applied.
   repeated string options = 6;
   // VolumeName is the name of the user, existing or external volume a volume mount refers to,
-  // e.g. "web-content".
+  // or of the text volume a textVolume mount refers to, e.g. "web-content".
   string volume_name = 7;
 }
 

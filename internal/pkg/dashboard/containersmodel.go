@@ -471,6 +471,26 @@ func networkMode(network containers.ContainerNetworkSpec) string {
 	return "none"
 }
 
+// formatMountSource renders where a mount comes from.
+func formatMountSource(mount containers.ContainerMountSpec) string {
+	switch mount.Kind {
+	case containers.MountKindVolume:
+		return "volume " + mount.VolumeName
+	case containers.MountKindTextVolume:
+		return "text volume " + mount.VolumeName
+	case containers.MountKindTmpfs:
+		if mount.Size > 0 {
+			return "tmpfs " + humanize.IBytes(mount.Size)
+		}
+
+		return "tmpfs"
+	case containers.MountKindHostPath:
+		return mount.Source
+	default:
+		return mount.Kind
+	}
+}
+
 // formatMounts renders the resolved mounts and devices, source first so that the destination lines up
 // with what the container sees.
 func formatMounts(mounts []containers.ContainerMountSpec, devices []containers.ContainerDeviceSpec) string {
@@ -481,22 +501,7 @@ func formatMounts(mounts []containers.ContainerMountSpec, devices []containers.C
 	rendered := make([]string, 0, len(mounts)+len(devices))
 
 	for _, mount := range mounts {
-		source := mount.Kind
-
-		switch mount.Kind {
-		case containers.MountKindVolume:
-			source = "volume " + mount.VolumeName
-		case containers.MountKindTmpfs:
-			source = "tmpfs"
-
-			if mount.Size > 0 {
-				source += " " + humanize.IBytes(mount.Size)
-			}
-		case containers.MountKindHostPath:
-			source = mount.Source
-		}
-
-		entry := fmt.Sprintf("%s to %s", source, mount.Destination)
+		entry := fmt.Sprintf("%s to %s", formatMountSource(mount), mount.Destination)
 
 		// Parenthesized rather than bracketed: square brackets are tview's color-tag syntax, and
 		// escaping them here would leak the escape form into the rendered text.

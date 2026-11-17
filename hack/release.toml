@@ -574,6 +574,35 @@ Talos 1.14 shipped an early version of `ContainerConfig`. Configurations written
 * The image entrypoint and arguments are now merged correctly when a config patch is applied, and containers running as a non-root user get their added capabilities.
 """
 
+    [notes.text_volumes]
+        title = "Text Volumes"
+        description = """\
+`TextVolumeConfig` documents declare a set of text files inline in the machine configuration, for containers to mount read-only with a `textVolume` mount, like a Kubernetes ConfigMap.
+
+```yaml
+apiVersion: v1alpha1
+kind: TextVolumeConfig
+name: app-config
+files:
+  app.conf: |
+    listen=:8080
+---
+apiVersion: v1alpha1
+kind: ContainerConfig
+name: server
+image: ghcr.io/example/server:v1.0.0
+mounts:
+  - textVolume:
+      name: app-config
+      destination: /etc/app
+```
+
+Every container mounting a text volume gets its own copy of the files on a tmpfs of its own, so two containers never share an inode.
+When the document changes, the files are replaced in place, and a running container sees the new content without being restarted.
+The copy is always read-only, and its files cannot be executed directly (run a script with its interpreter, e.g. `sh script.sh`).
+Text volume names are unique across user, existing and external volumes.
+"""
+
     [notes.extension_service_configuration]
         title = "Extension Service Configuration"
         description = """\

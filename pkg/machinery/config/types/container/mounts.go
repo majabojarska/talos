@@ -48,13 +48,25 @@ type ContainerMount struct {
 	// Deprecated: Use `volume` instead.
 	UserVolumeMount *VolumeMount `yaml:"userVolume,omitempty"`
 	//   description: |
+	//     Mount a text volume by name.
+	//
+	//     The name is that of a `TextVolumeConfig` document. The container gets a copy of the
+	//     files of its own, on a tmpfs of its own: no two containers share an inode. The copy is
+	//     always read-only, and its files cannot be executed directly (run a script with its
+	//     interpreter instead, e.g. `sh script.sh`). It is updated in place when the document
+	//     changes, without restarting the container.
+	//
+	//     Declaring this mount also makes the container wait for the files to be written before
+	//     it starts.
+	TextVolumeMount *TextVolumeMount `yaml:"textVolume,omitempty"`
+	//   description: |
 	//     Mount a tmpfs for scratch space.
 	TmpfsMount *TmpfsMount `yaml:"tmpfs,omitempty"`
 	//   description: |
 	//     Bind-mount a path from the host.
 	//
 	//     The source must already exist; Talos will not create it. This is the widest of the
-	//     three sources and the only one that can reach arbitrary host state.
+	//     sources and the only one that can reach arbitrary host state.
 	HostPathMount *HostPathMount `yaml:"hostPath,omitempty"`
 }
 
@@ -83,6 +95,16 @@ type VolumeMount struct {
 	//     - rbind
 	//     - rshared
 	MountOpts []string `yaml:"options,omitempty"`
+}
+
+// TextVolumeMount mounts a text volume.
+type TextVolumeMount struct {
+	//   description: |
+	//     Name of the `TextVolumeConfig` document.
+	VolumeName string `yaml:"name"`
+	//   description: |
+	//     Absolute path inside the container's mount namespace.
+	MountDestination string `yaml:"destination"`
 }
 
 // TmpfsMount mounts a tmpfs.
@@ -125,6 +147,10 @@ func (m *ContainerMount) Validate() (string, error) {
 		matchCount++
 	}
 
+	if m.TextVolumeMount != nil {
+		matchCount++
+	}
+
 	if m.TmpfsMount != nil {
 		matchCount++
 	}
@@ -134,7 +160,7 @@ func (m *ContainerMount) Validate() (string, error) {
 	}
 
 	if matchCount != 1 {
-		return "", errors.New("exactly one of volume, tmpfs or hostPath must be set")
+		return "", errors.New("exactly one of volume, textVolume, tmpfs or hostPath must be set")
 	}
 
 	var (
@@ -146,6 +172,9 @@ func (m *ContainerMount) Validate() (string, error) {
 	case volumeMount != nil:
 		destination = volumeMount.MountDestination
 		err = volumeMount.Validate()
+	case m.TextVolumeMount != nil:
+		destination = m.TextVolumeMount.MountDestination
+		err = m.TextVolumeMount.Validate()
 	case m.TmpfsMount != nil:
 		destination = m.TmpfsMount.MountDestination
 		err = m.TmpfsMount.Validate()
@@ -170,6 +199,17 @@ func (m *VolumeMount) Validate() error {
 		ValidateAbsPath("volume.destination", m.MountDestination),
 		ValidateMountOptions(m.MountOpts),
 	)
+}
+
+// Validate checks the text volume mount.
+func (m *TextVolumeMount) Validate() error {
+	var validationErrors error
+
+	if m.VolumeName == "" {
+		validationErrors = errors.Join(validationErrors, errors.New("textVolume.name is required"))
+	}
+
+	return errors.Join(validationErrors, ValidateAbsPath("textVolume.destination", m.MountDestination))
 }
 
 func (m *TmpfsMount) Validate() error {
@@ -205,10 +245,11 @@ func ValidateMountOptions(options []string) error {
 
 // Check interfaces.
 var (
-	_ config.ContainerMountConfig         = &ContainerMount{}
-	_ config.ContainerVolumeMountConfig   = &VolumeMount{}
-	_ config.ContainerTmpfsMountConfig    = &TmpfsMount{}
-	_ config.ContainerHostPathMountConfig = &HostPathMount{}
+	_ config.ContainerMountConfig           = &ContainerMount{}
+	_ config.ContainerVolumeMountConfig     = &VolumeMount{}
+	_ config.ContainerTextVolumeMountConfig = &TextVolumeMount{}
+	_ config.ContainerTmpfsMountConfig      = &TmpfsMount{}
+	_ config.ContainerHostPathMountConfig   = &HostPathMount{}
 )
 
 // volumeMount returns the volume mount source.
@@ -230,6 +271,15 @@ func (m *ContainerMount) Volume() optional.Optional[config.ContainerVolumeMountC
 	}
 
 	return optional.Some[config.ContainerVolumeMountConfig](volumeMount)
+}
+
+// TextVolume implements config.ContainerMountConfig interface.
+func (m *ContainerMount) TextVolume() optional.Optional[config.ContainerTextVolumeMountConfig] {
+	if m.TextVolumeMount == nil {
+		return optional.None[config.ContainerTextVolumeMountConfig]()
+	}
+
+	return optional.Some[config.ContainerTextVolumeMountConfig](m.TextVolumeMount)
 }
 
 // Tmpfs implements config.ContainerMountConfig interface.
@@ -258,6 +308,12 @@ func (m *VolumeMount) Destination() string { return m.MountDestination }
 
 // MountOptions implements config.ContainerVolumeMountConfig interface.
 func (m *VolumeMount) MountOptions() []string { return normalizeWritableOptions(m.MountOpts) }
+
+// Name implements config.ContainerTextVolumeMountConfig interface.
+func (m *TextVolumeMount) Name() string { return m.VolumeName }
+
+// Destination implements config.ContainerTextVolumeMountConfig interface.
+func (m *TextVolumeMount) Destination() string { return m.MountDestination }
 
 // Destination implements config.ContainerTmpfsMountConfig interface.
 func (m *TmpfsMount) Destination() string { return m.MountDestination }

@@ -53,9 +53,10 @@ type ContainerConfig interface {
 
 // ContainerMountConfig defines a single container mount.
 //
-// Exactly one of the three sources is present.
+// Exactly one of the sources is present.
 type ContainerMountConfig interface {
 	Volume() optional.Optional[ContainerVolumeMountConfig]
+	TextVolume() optional.Optional[ContainerTextVolumeMountConfig]
 	Tmpfs() optional.Optional[ContainerTmpfsMountConfig]
 	HostPath() optional.Optional[ContainerHostPathMountConfig]
 }
@@ -70,6 +71,18 @@ type ContainerVolumeMountConfig interface {
 	Destination() string
 	// MountOptions with the writable default already applied.
 	MountOptions() []string
+}
+
+// ContainerTextVolumeMountConfig mounts a text volume.
+//
+// The mount is always read-only.
+//
+//nolint:iface
+type ContainerTextVolumeMountConfig interface {
+	// Name of the TextVolumeConfig document.
+	Name() string
+	// Destination inside the container.
+	Destination() string
 }
 
 // ContainerTmpfsMountConfig mounts a tmpfs.
@@ -100,6 +113,8 @@ type ContainerDeviceConfig interface {
 }
 
 // ContainerRawVolumeDeviceConfig hands a raw volume to a container as a block device.
+//
+//nolint:iface
 type ContainerRawVolumeDeviceConfig interface {
 	// Name of the RawVolumeConfig document.
 	Name() string

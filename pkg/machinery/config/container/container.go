@@ -521,6 +521,11 @@ func (container *Container) SwapVolumeConfigs() []config.SwapVolumeConfig {
 	return findMatchingDocs[config.SwapVolumeConfig](container.documents)
 }
 
+// TextVolumeConfigs implements config.Config interface.
+func (container *Container) TextVolumeConfigs() []config.TextVolumeConfig {
+	return findMatchingDocs[config.TextVolumeConfig](container.documents)
+}
+
 // StoragePoolConfigs implements config.Config interface.
 func (container *Container) StoragePoolConfigs() []config.StoragePoolConfig {
 	return findMatchingDocs[config.StoragePoolConfig](container.documents)

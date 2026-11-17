@@ -267,7 +267,7 @@ func MountsResolvedMatchDeclared(resolved []ResolvedMountSpec, declared []Contai
 			return false
 		}
 
-		if mount.Kind == MountKindVolume && r.VolumeName != mount.VolumeName {
+		if (mount.Kind == MountKindVolume || mount.Kind == MountKindTextVolume) && r.VolumeName != mount.VolumeName {
 			return false
 		}
 	}
@@ -290,7 +290,7 @@ func DevicesResolvedMatchDeclared(resolved []ResolvedDeviceSpec, declared []Cont
 //
 //gotagsrewrite:gen
 type ContainerMountSpec struct {
-	// Kind is one of "volume", "tmpfs" or "hostPath".
+	// Kind is one of "volume", "textVolume", "tmpfs" or "hostPath".
 	Kind string `yaml:"kind" protobuf:"1"`
 	// Source is the host path for a hostPath mount.
 	Source string `yaml:"source,omitempty" protobuf:"3"`
@@ -301,7 +301,7 @@ type ContainerMountSpec struct {
 	// Options with the writable default already applied.
 	Options []string `yaml:"options,omitempty" protobuf:"6"`
 	// VolumeName is the name of the user, existing or external volume a volume mount refers to,
-	// e.g. "web-content".
+	// or of the text volume a textVolume mount refers to, e.g. "web-content".
 	VolumeName string `yaml:"volumeName,omitempty" protobuf:"7"`
 }
 
@@ -312,9 +312,10 @@ func (m ContainerMountSpec) ReadOnly() bool {
 
 // Mount kinds.
 const (
-	MountKindVolume   = "volume"
-	MountKindTmpfs    = "tmpfs"
-	MountKindHostPath = "hostPath"
+	MountKindVolume     = "volume"
+	MountKindTextVolume = "textVolume"
+	MountKindTmpfs      = "tmpfs"
+	MountKindHostPath   = "hostPath"
 )
 
 // ContainerDeviceSpec is a device handed to the container.

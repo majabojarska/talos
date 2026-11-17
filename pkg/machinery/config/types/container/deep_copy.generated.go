@@ -57,6 +57,10 @@ func (o *ContainerConfigV1Alpha1) DeepCopy() *ContainerConfigV1Alpha1 {
 					copy(cp.MountsConfig[i2].UserVolumeMount.MountOpts, o.MountsConfig[i2].UserVolumeMount.MountOpts)
 				}
 			}
+			if o.MountsConfig[i2].TextVolumeMount != nil {
+				cp.MountsConfig[i2].TextVolumeMount = new(TextVolumeMount)
+				*cp.MountsConfig[i2].TextVolumeMount = *o.MountsConfig[i2].TextVolumeMount
+			}
 			if o.MountsConfig[i2].TmpfsMount != nil {
 				cp.MountsConfig[i2].TmpfsMount = new(TmpfsMount)
 				*cp.MountsConfig[i2].TmpfsMount = *o.MountsConfig[i2].TmpfsMount

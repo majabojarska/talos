@@ -3486,3 +3486,125 @@ func (suite *ContainersSuite) TestWorkloadMemoryLimitEnforced() {
 func init() {
 	allSuites = append(allSuites, new(ContainersSuite))
 }
+
+// TestContainerTextVolumeMount covers containers mounting a TextVolumeConfig document: every
+// container gets a tmpfs instance of its own holding the files with their nested paths intact, read-only,
+// and editing the document updates the files under the running containers without restarting them.
+func (suite *ContainersSuite) TestContainerTextVolumeMount() {
+	ctx, name, node := suite.setupContainer("textvolume")
+	otherCtx, otherName := suite.setupContainerOn("textvolume-other", node)
+
+	textVolumeName := suite.setupTextVolume(ctx, node, map[string]string{
+		"app.conf":       "key1=val1\n",
+		"conf.d/log.ini": "key2=val2\n",
+	})
+
+	const destination = "/etc/app"
+
+	// The files are read in a loop, so an update shows up in the log of the same process. The write
+	// attempt proves the mount is read-only.
+	newDoc := func(containerName string) *containercfg.ContainerConfigV1Alpha1 {
+		doc := suite.shellContainer(containerName,
+			"(echo x > "+destination+"/app.conf 2>/dev/null && echo WRITABLE || echo READONLY)"+
+				" && while true; do cat "+destination+"/app.conf "+destination+"/conf.d/log.ini; sleep 1; done")
+		doc.MountsConfig = []containercfg.ContainerMount{
+			{
+				TextVolumeMount: &containercfg.TextVolumeMount{
+					VolumeName:       textVolumeName,
+					MountDestination: destination,
+				},
+			},
+		}
+
+		return doc
+	}
+
+	suite.applyContainers(ctx, newDoc(name), newDoc(otherName))
+
+	// One instance per container: two distinct tmpfs volumes, so no inode is shared.
+	volumeIDs := map[string]string{}
+
+	for _, containerName := range []string{name, otherName} {
+		requestID := "containers.MountController/" + containerName + "/" + textVolumeName
+
+		rtestutils.AssertResource(ctx, suite.T(), suite.Client.State(), requestID,
+			func(status *block.TextVolumeStatus, asrt *assert.Assertions) {
+				asrt.True(status.TypedSpec().Ready, "error: %q", status.TypedSpec().Error)
+				asrt.NotEmpty(status.TypedSpec().VolumeID)
+
+				volumeIDs[containerName] = status.TypedSpec().VolumeID
+			})
+
+		rtestutils.AssertResource(ctx, suite.T(), suite.Client.State(), volumeIDs[containerName],
+			func(status *block.VolumeStatus, asrt *assert.Assertions) {
+				asrt.Equal(block.VolumeTypeTmpfs, status.TypedSpec().Type)
+				asrt.Equal(block.VolumePhaseReady, status.TypedSpec().Phase)
+			})
+
+		rtestutils.AssertResource(ctx, suite.T(), suite.Client.State(), containerName,
+			func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+				asrt.True(status.TypedSpec().Ready, "error: %q", status.TypedSpec().Error)
+			})
+	}
+
+	suite.Assert().NotEqual(volumeIDs[name], volumeIDs[otherName], "containers share a text volume instance")
+
+	suite.assertContainerLogged(ctx, name, "key1=val1")
+	suite.assertContainerLogged(ctx, name, "key2=val2")
+	// A failure here is most likely SELinux denying the read rather than the mount being writable, so
+	// check the node's audit log before assuming the mount options are wrong.
+	suite.assertContainerLogged(ctx, name, "READONLY")
+	suite.assertContainerLogged(otherCtx, otherName, "key1=val1")
+
+	instanceID, _ := suite.assertContainerRunning(ctx, name, "with the text volume mounted")
+
+	suite.T().Logf("editing text volume %q", textVolumeName)
+
+	suite.applyTextVolume(ctx, textVolumeName, map[string]string{
+		"app.conf":       "key1=edited\n",
+		"conf.d/log.ini": "key2=val2\n",
+	})
+
+	// The same process reads the new content: the files were replaced under it.
+	suite.assertContainerLogged(ctx, name, "key1=edited")
+	suite.assertContainerLogged(otherCtx, otherName, "key1=edited")
+
+	sameInstanceID, _ := suite.assertContainerRunning(ctx, name, "after the text volume edit")
+	suite.Assert().Equal(instanceID, sameInstanceID, "the container was restarted by the text volume edit")
+
+	suite.T().Logf("removing container config %q", name)
+
+	suite.RemoveMachineConfigDocumentsByName(ctx, containercfg.ContainerConfigKind, name)
+
+	// The instance exists for the container, so it goes when the container does.
+	rtestutils.AssertNoResource[*block.VolumeStatus](ctx, suite.T(), suite.Client.State(), volumeIDs[name])
+	rtestutils.AssertResource(ctx, suite.T(), suite.Client.State(), volumeIDs[otherName],
+		func(*block.VolumeStatus, *assert.Assertions) {})
+}
+
+// setupTextVolume declares a TextVolumeConfig document unique to this test and returns its name.
+func (suite *ContainersSuite) setupTextVolume(ctx context.Context, node string, files map[string]string) string {
+	name := fmt.Sprintf("itv-%04x", rand.Int31())
+
+	suite.T().Cleanup(func() {
+		// suite.ctx is likely canceled by the time this runs.
+		cleanupCtx := client.WithNode(context.Background(), node)
+
+		suite.RemoveMachineConfigDocumentsByName(cleanupCtx, blockcfg.TextVolumeConfigKind, name)
+	})
+
+	suite.applyTextVolume(ctx, name, files)
+
+	return name
+}
+
+// applyTextVolume applies a TextVolumeConfig document with the given files.
+func (suite *ContainersSuite) applyTextVolume(ctx context.Context, name string, files map[string]string) {
+	suite.T().Logf("applying text volume %q", name)
+
+	doc := blockcfg.NewTextVolumeConfigV1Alpha1()
+	doc.MetaName = name
+	doc.FilesSpec = files
+
+	suite.PatchMachineConfig(ctx, doc)
+}
