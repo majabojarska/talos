@@ -5,6 +5,7 @@
 package config
 
 import (
+	"io/fs"
 	"time"
 
 	"github.com/siderolabs/gen/optional"
@@ -25,9 +26,11 @@ type BackingVolume struct {
 	// its current requesters ask for, so a requester asking for less weakens the mount whenever it
 	// is the only one left, such as while it still holds the volume after its config is removed.
 	Secure bool
+	// Text is set for a text volume, whose contents are rendered by Talos after the volume is mounted.
+	Text bool
 }
 
-// ResolveBackingVolume resolves a user, existing, or external volume by document name.
+// ResolveBackingVolume resolves a user, existing, external, or text volume by document name.
 func ResolveBackingVolume(cfg Config, name string) (BackingVolume, bool) {
 	for _, volume := range cfg.UserVolumeConfigs() {
 		if volume.Name() == name {
@@ -51,6 +54,17 @@ func ResolveBackingVolume(cfg Config, name string) (BackingVolume, bool) {
 				ID:       constants.ExternalVolumePrefix + name,
 				ReadOnly: volume.Mount().ReadOnly(),
 				Secure:   volume.Mount().Secure(),
+			}, true
+		}
+	}
+
+	for _, volume := range cfg.TextVolumeConfigs() {
+		if volume.Name() == name {
+			return BackingVolume{
+				ID:       constants.TextVolumePrefix + name,
+				ReadOnly: true,
+				Secure:   true,
+				Text:     true,
 			}, true
 		}
 	}
@@ -201,6 +215,24 @@ type UserVolumeConfig interface {
 	Mount() UserVolumeMountConfig
 	VolumeTrimConfigProvider
 	VolumeScrubConfigProvider
+}
+
+// TextVolumeConfig defines the interface to access text volume configuration.
+type TextVolumeConfig interface {
+	NamedDocument
+	TextVolumeConfigSignal()
+	// Files returns the files of the volume, sorted by path.
+	Files() []TextVolumeFile
+}
+
+// TextVolumeFile is a single file of a text volume.
+type TextVolumeFile struct {
+	// Path is the path of the file relative to the volume root.
+	Path string
+	// Mode is the file's permissions.
+	Mode fs.FileMode
+	// Contents are the file's contents.
+	Contents string
 }
 
 // RawVolumeConfig defines the interface to access raw volume configuration.

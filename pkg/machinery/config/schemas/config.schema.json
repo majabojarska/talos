@@ -332,7 +332,7 @@
         "apiVersion",
         "kind"
       ],
-      "description": "ExistingVolumeConfig is an existing volume configuration document.\\nExisting volumes allow to mount partitions (or whole disks) that were created\\noutside of Talos. Volume will be mounted under `/var/mnt/\u003cname\u003e`.\\nThe name must not be taken by a user or external volume.\\n"
+      "description": "ExistingVolumeConfig is an existing volume configuration document.\\nExisting volumes allow to mount partitions (or whole disks) that were created\\noutside of Talos. Volume will be mounted under `/var/mnt/\u003cname\u003e`.\\nThe name must not be taken by a user, external or text volume.\\n"
     },
     "block.ExternalMountSpec": {
       "properties": {
@@ -427,7 +427,7 @@
         "apiVersion",
         "kind"
       ],
-      "description": "ExternalVolumeConfig is an external disk mount configuration document.\\nExternal volumes allow to mount volumes that were created outside of Talos,\\nover the network or API. Volume will be mounted under `/var/mnt/\u003cname\u003e`.\\nThe name must not be taken by a user or existing volume.\\n"
+      "description": "ExternalVolumeConfig is an external disk mount configuration document.\\nExternal volumes allow to mount volumes that were created outside of Talos,\\nover the network or API. Volume will be mounted under `/var/mnt/\u003cname\u003e`.\\nThe name must not be taken by a user, existing or text volume.\\n"
     },
     "block.FilesystemScrubConfigV1Alpha1": {
       "properties": {
@@ -893,6 +893,77 @@
       "type": "object",
       "description": "SystemVolumeFilesystemSpec describes how the system volume is formatted.\\n\\nThe filesystem type is fixed for system volumes, and project quota support is configured via\\nmachine features, so only the filesystem-specific tunables are exposed here.\\n"
     },
+    "block.TextVolumeConfigV1Alpha1": {
+      "properties": {
+        "apiVersion": {
+          "enum": [
+            "v1alpha1"
+          ],
+          "title": "apiVersion",
+          "description": "apiVersion is the API version of the resource.\n",
+          "markdownDescription": "apiVersion is the API version of the resource.",
+          "x-intellij-html-description": "\u003cp\u003eapiVersion is the API version of the resource.\u003c/p\u003e\n"
+        },
+        "kind": {
+          "enum": [
+            "TextVolumeConfig"
+          ],
+          "title": "kind",
+          "description": "kind is the kind of the resource.\n",
+          "markdownDescription": "kind is the kind of the resource.",
+          "x-intellij-html-description": "\u003cp\u003ekind is the kind of the resource.\u003c/p\u003e\n"
+        },
+        "name": {
+          "type": "string",
+          "title": "name",
+          "description": "Name of the volume.\n\nName might be between 1 and 34 characters long and can only contain:\nlowercase and uppercase ASCII letters, digits, and hyphens.\n",
+          "markdownDescription": "Name of the volume.\n\nName might be between 1 and 34 characters long and can only contain:\nlowercase and uppercase ASCII letters, digits, and hyphens.",
+          "x-intellij-html-description": "\u003cp\u003eName of the volume.\u003c/p\u003e\n\n\u003cp\u003eName might be between 1 and 34 characters long and can only contain:\nlowercase and uppercase ASCII letters, digits, and hyphens.\u003c/p\u003e\n"
+        },
+        "files": {
+          "patternProperties": {
+            ".*": {
+              "$ref": "#/$defs/block.TextVolumeFileV1Alpha1"
+            }
+          },
+          "type": "object",
+          "title": "files",
+          "description": "Files of the volume, keyed by the path relative to the volume root.\n\nPaths may contain subdirectories, which are created automatically.\nPath components must not start with ...\nThe total size of the file contents must not exceed 1 MiB.\n",
+          "markdownDescription": "Files of the volume, keyed by the path relative to the volume root.\n\nPaths may contain subdirectories, which are created automatically.\nPath components must not start with `..`.\nThe total size of the file contents must not exceed 1 MiB.",
+          "x-intellij-html-description": "\u003cp\u003eFiles of the volume, keyed by the path relative to the volume root.\u003c/p\u003e\n\n\u003cp\u003ePaths may contain subdirectories, which are created automatically.\nPath components must not start with \u003ccode\u003e..\u003c/code\u003e.\nThe total size of the file contents must not exceed 1 MiB.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "apiVersion",
+        "files",
+        "kind",
+        "name"
+      ],
+      "description": "TextVolumeConfig is a text volume configuration document.\\nText volume is a set of text files kept in memory (`tmpfs`) and mounted under `/var/mnt/\u003cname\u003e`.\\nIt can be mounted into Talos containers with a `volume` mount in `ContainerConfig`, similar to a Kubernetes ConfigMap.\\nThe mount must set the `ro` option, as text volumes are read-only for containers.\\nThe name must not be taken by a user, existing or external volume.\\n\\nChanges to the files are applied in place, without restarting the containers which mount the volume:\\nthe files are replaced atomically as a whole, by swapping the `..data` symbolic link\\nto a directory holding the new set of files.\\nEach top-level entry of the volume is a symbolic link into `..data`.\\n"
+    },
+    "block.TextVolumeFileV1Alpha1": {
+      "properties": {
+        "mode": {
+          "type": "integer",
+          "title": "mode",
+          "description": "The file’s permissions in octal.\n\nDefaults to 0o644.\n",
+          "markdownDescription": "The file's permissions in octal.\n\nDefaults to `0o644`.",
+          "x-intellij-html-description": "\u003cp\u003eThe file\u0026rsquo;s permissions in octal.\u003c/p\u003e\n\n\u003cp\u003eDefaults to \u003ccode\u003e0o644\u003c/code\u003e.\u003c/p\u003e\n"
+        },
+        "contents": {
+          "type": "string",
+          "title": "contents",
+          "description": "The contents of the file.\n",
+          "markdownDescription": "The contents of the file.",
+          "x-intellij-html-description": "\u003cp\u003eThe contents of the file.\u003c/p\u003e\n"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "description": "TextVolumeFileV1Alpha1 describes a single file of a text volume."
+    },
     "block.TrimConfig": {
       "properties": {
         "enabled": {
@@ -1046,7 +1117,7 @@
         "apiVersion",
         "kind"
       ],
-      "description": "UserVolumeConfig is a user volume configuration document.\\nUser volume is automatically allocated as a partition on the specified disk\\nand mounted under `/var/mnt/\u003cname\u003e`.\\nThe partition label is automatically generated as `u-\u003cname\u003e`.\\nThe name must not be taken by an existing or external volume.\\nA `tmpfs` user volume is backed by memory, its size is set with `provisioning.maxSize`\\n(in bytes, or in percents of the memory), and its content is lost on unmount.\\n"
+      "description": "UserVolumeConfig is a user volume configuration document.\\nUser volume is automatically allocated as a partition on the specified disk\\nand mounted under `/var/mnt/\u003cname\u003e`.\\nThe partition label is automatically generated as `u-\u003cname\u003e`.\\nThe name must not be taken by an existing, external or text volume.\\nA `tmpfs` user volume is backed by memory, its size is set with `provisioning.maxSize`\\n(in bytes, or in percents of the memory), and its content is lost on unmount.\\n"
     },
     "block.VirtiofsMountSpec": {
       "properties": {
@@ -1758,9 +1829,9 @@
         "volume": {
           "$ref": "#/$defs/container.VolumeMount",
           "title": "volume",
-          "description": "Mount a user, existing or external volume by name.\n\nThe name is that of a UserVolumeConfig, ExistingVolumeConfig or\nExternalVolumeConfig document. Volume names are unique across those kinds, so the\nname resolves to one volume. The volume must be declared in the same configuration.\n\nThe volume is mounted from /var/mnt/\u0026lt;name\u0026gt; on the host. Declaring this mount also\nmakes the container wait for the volume to be mounted before it starts.\n",
-          "markdownDescription": "Mount a user, existing or external volume by name.\n\nThe name is that of a `UserVolumeConfig`, `ExistingVolumeConfig` or\n`ExternalVolumeConfig` document. Volume names are unique across those kinds, so the\nname resolves to one volume. The volume must be declared in the same configuration.\n\nThe volume is mounted from `/var/mnt/\u003cname\u003e` on the host. Declaring this mount also\nmakes the container wait for the volume to be mounted before it starts.",
-          "x-intellij-html-description": "\u003cp\u003eMount a user, existing or external volume by name.\u003c/p\u003e\n\n\u003cp\u003eThe name is that of a \u003ccode\u003eUserVolumeConfig\u003c/code\u003e, \u003ccode\u003eExistingVolumeConfig\u003c/code\u003e or\n\u003ccode\u003eExternalVolumeConfig\u003c/code\u003e document. Volume names are unique across those kinds, so the\nname resolves to one volume. The volume must be declared in the same configuration.\u003c/p\u003e\n\n\u003cp\u003eThe volume is mounted from \u003ccode\u003e/var/mnt/\u0026lt;name\u0026gt;\u003c/code\u003e on the host. Declaring this mount also\nmakes the container wait for the volume to be mounted before it starts.\u003c/p\u003e\n"
+          "description": "Mount a user, existing, external or text volume by name.\n\nThe name is that of a UserVolumeConfig, ExistingVolumeConfig, ExternalVolumeConfig\nor TextVolumeConfig document. Volume names are unique across those kinds, so the\nname resolves to one volume. The volume must be declared in the same configuration.\n\nThe volume is mounted from /var/mnt/\u0026lt;name\u0026gt; on the host. Declaring this mount also\nmakes the container wait for the volume to be mounted before it starts.\n",
+          "markdownDescription": "Mount a user, existing, external or text volume by name.\n\nThe name is that of a `UserVolumeConfig`, `ExistingVolumeConfig`, `ExternalVolumeConfig`\nor `TextVolumeConfig` document. Volume names are unique across those kinds, so the\nname resolves to one volume. The volume must be declared in the same configuration.\n\nThe volume is mounted from `/var/mnt/\u003cname\u003e` on the host. Declaring this mount also\nmakes the container wait for the volume to be mounted before it starts.",
+          "x-intellij-html-description": "\u003cp\u003eMount a user, existing, external or text volume by name.\u003c/p\u003e\n\n\u003cp\u003eThe name is that of a \u003ccode\u003eUserVolumeConfig\u003c/code\u003e, \u003ccode\u003eExistingVolumeConfig\u003c/code\u003e, \u003ccode\u003eExternalVolumeConfig\u003c/code\u003e\nor \u003ccode\u003eTextVolumeConfig\u003c/code\u003e document. Volume names are unique across those kinds, so the\nname resolves to one volume. The volume must be declared in the same configuration.\u003c/p\u003e\n\n\u003cp\u003eThe volume is mounted from \u003ccode\u003e/var/mnt/\u0026lt;name\u0026gt;\u003c/code\u003e on the host. Declaring this mount also\nmakes the container wait for the volume to be mounted before it starts.\u003c/p\u003e\n"
         },
         "tmpfs": {
           "$ref": "#/$defs/container.TmpfsMount",
@@ -2071,9 +2142,9 @@
         "name": {
           "type": "string",
           "title": "name",
-          "description": "Name of the volume to mount.\n\nThe name of a UserVolumeConfig, ExistingVolumeConfig or ExternalVolumeConfig document.\n",
-          "markdownDescription": "Name of the volume to mount.\n\nThe name of a `UserVolumeConfig`, `ExistingVolumeConfig` or `ExternalVolumeConfig` document.",
-          "x-intellij-html-description": "\u003cp\u003eName of the volume to mount.\u003c/p\u003e\n\n\u003cp\u003eThe name of a \u003ccode\u003eUserVolumeConfig\u003c/code\u003e, \u003ccode\u003eExistingVolumeConfig\u003c/code\u003e or \u003ccode\u003eExternalVolumeConfig\u003c/code\u003e document.\u003c/p\u003e\n"
+          "description": "Name of the volume to mount.\n\nThe name of a UserVolumeConfig, ExistingVolumeConfig, ExternalVolumeConfig or TextVolumeConfig document.\n",
+          "markdownDescription": "Name of the volume to mount.\n\nThe name of a `UserVolumeConfig`, `ExistingVolumeConfig`, `ExternalVolumeConfig` or `TextVolumeConfig` document.",
+          "x-intellij-html-description": "\u003cp\u003eName of the volume to mount.\u003c/p\u003e\n\n\u003cp\u003eThe name of a \u003ccode\u003eUserVolumeConfig\u003c/code\u003e, \u003ccode\u003eExistingVolumeConfig\u003c/code\u003e, \u003ccode\u003eExternalVolumeConfig\u003c/code\u003e or \u003ccode\u003eTextVolumeConfig\u003c/code\u003e document.\u003c/p\u003e\n"
         },
         "destination": {
           "type": "string",
@@ -2094,9 +2165,9 @@
             "rshared"
           ],
           "title": "options",
-          "description": "Mount options. Volume mounts are writable by default (rw).\n\nA volume whose ExistingVolumeConfig or ExternalVolumeConfig declares it\nread-only must be mounted with ro.\n",
-          "markdownDescription": "Mount options. Volume mounts are writable by default (`rw`).\n\nA volume whose `ExistingVolumeConfig` or `ExternalVolumeConfig` declares it\nread-only must be mounted with `ro`.",
-          "x-intellij-html-description": "\u003cp\u003eMount options. Volume mounts are writable by default (\u003ccode\u003erw\u003c/code\u003e).\u003c/p\u003e\n\n\u003cp\u003eA volume whose \u003ccode\u003eExistingVolumeConfig\u003c/code\u003e or \u003ccode\u003eExternalVolumeConfig\u003c/code\u003e declares it\nread-only must be mounted with \u003ccode\u003ero\u003c/code\u003e.\u003c/p\u003e\n"
+          "description": "Mount options. Volume mounts are writable by default (rw).\n\nA volume whose ExistingVolumeConfig or ExternalVolumeConfig declares it\nread-only must be mounted with ro, as must a text volume (TextVolumeConfig),\nwhich is always read-only for containers.\n",
+          "markdownDescription": "Mount options. Volume mounts are writable by default (`rw`).\n\nA volume whose `ExistingVolumeConfig` or `ExternalVolumeConfig` declares it\nread-only must be mounted with `ro`, as must a text volume (`TextVolumeConfig`),\nwhich is always read-only for containers.",
+          "x-intellij-html-description": "\u003cp\u003eMount options. Volume mounts are writable by default (\u003ccode\u003erw\u003c/code\u003e).\u003c/p\u003e\n\n\u003cp\u003eA volume whose \u003ccode\u003eExistingVolumeConfig\u003c/code\u003e or \u003ccode\u003eExternalVolumeConfig\u003c/code\u003e declares it\nread-only must be mounted with \u003ccode\u003ero\u003c/code\u003e, as must a text volume (\u003ccode\u003eTextVolumeConfig\u003c/code\u003e),\nwhich is always read-only for containers.\u003c/p\u003e\n"
         }
       },
       "additionalProperties": false,
@@ -10201,6 +10272,9 @@
     },
     {
       "$ref": "#/$defs/block.SwapVolumeConfigV1Alpha1"
+    },
+    {
+      "$ref": "#/$defs/block.TextVolumeConfigV1Alpha1"
     },
     {
       "$ref": "#/$defs/block.UserVolumeConfigV1Alpha1"

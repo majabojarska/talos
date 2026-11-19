@@ -1584,6 +1584,12 @@ const (
 	// SwapVolumePrefix is the prefix for the swap volumes.
 	SwapVolumePrefix = "s-"
 
+	// TextVolumePrefix is the prefix for the text volumes.
+	TextVolumePrefix = "t-"
+
+	// TextVolumeMaxContentsSize is the maximum total size of the file contents of a text volume.
+	TextVolumeMaxContentsSize = 1024 * 1024
+
 	// ContainerServicePIDPrefix distinguishes container PIDs from Talos service PIDs in the ServicePID
 	// namespace, parallel to the "ext-" prefix extension services use, so an AllowedServices glob can
 	// target containers without risking a collision with an unrelated service name.

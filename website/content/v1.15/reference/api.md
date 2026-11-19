@@ -528,6 +528,7 @@ description: Talos gRPC API reference.
 - [resource/definitions/files/files.proto](#resource/definitions/files/files.proto)
     - [EtcFileSpecSpec](#talos.resource.definitions.files.EtcFileSpecSpec)
     - [EtcFileStatusSpec](#talos.resource.definitions.files.EtcFileStatusSpec)
+    - [TextVolumeStatusSpec](#talos.resource.definitions.files.TextVolumeStatusSpec)
   
 - [resource/definitions/hardware/hardware.proto](#resource/definitions/hardware/hardware.proto)
     - [BMCDeviceSpec](#talos.resource.definitions.hardware.BMCDeviceSpec)
@@ -9248,6 +9249,24 @@ EtcFileStatusSpec describes status of rendered secrets.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | spec_version | [string](#string) |  |  |
+
+
+
+
+
+
+<a name="talos.resource.definitions.files.TextVolumeStatusSpec"></a>
+
+### TextVolumeStatusSpec
+TextVolumeStatusSpec describes the rendered files of a text volume.
+
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| volume_name | [string](#string) |  | VolumeName is the name of the TextVolumeConfig document. |
+| target | [string](#string) |  | Target is the path the volume is mounted at. |
+| contents_hash | [string](#string) |  | ContentsHash is the hash of the rendered files. |
+| files | [int64](#int64) |  | Files is the number of rendered files. |
 
 
 

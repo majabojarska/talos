@@ -17,6 +17,7 @@ func conflictingVolumeKinds(selfKind string) []string {
 		UserVolumeConfigKind,
 		ExistingVolumeConfigKind,
 		ExternalVolumeConfigKind,
+		TextVolumeConfigKind,
 	}, func(kind string) bool {
 		return kind != selfKind
 	})

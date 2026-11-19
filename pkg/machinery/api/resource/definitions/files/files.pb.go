@@ -128,6 +128,79 @@ func (x *EtcFileStatusSpec) GetSpecVersion() string {
 	return ""
 }
 
+// TextVolumeStatusSpec describes the rendered files of a text volume.
+type TextVolumeStatusSpec struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// VolumeName is the name of the TextVolumeConfig document.
+	VolumeName string `protobuf:"bytes,1,opt,name=volume_name,json=volumeName,proto3" json:"volume_name,omitempty"`
+	// Target is the path the volume is mounted at.
+	Target string `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
+	// ContentsHash is the hash of the rendered files.
+	ContentsHash string `protobuf:"bytes,3,opt,name=contents_hash,json=contentsHash,proto3" json:"contents_hash,omitempty"`
+	// Files is the number of rendered files.
+	Files         int64 `protobuf:"varint,4,opt,name=files,proto3" json:"files,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TextVolumeStatusSpec) Reset() {
+	*x = TextVolumeStatusSpec{}
+	mi := &file_resource_definitions_files_files_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TextVolumeStatusSpec) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TextVolumeStatusSpec) ProtoMessage() {}
+
+func (x *TextVolumeStatusSpec) ProtoReflect() protoreflect.Message {
+	mi := &file_resource_definitions_files_files_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TextVolumeStatusSpec.ProtoReflect.Descriptor instead.
+func (*TextVolumeStatusSpec) Descriptor() ([]byte, []int) {
+	return file_resource_definitions_files_files_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *TextVolumeStatusSpec) GetVolumeName() string {
+	if x != nil {
+		return x.VolumeName
+	}
+	return ""
+}
+
+func (x *TextVolumeStatusSpec) GetTarget() string {
+	if x != nil {
+		return x.Target
+	}
+	return ""
+}
+
+func (x *TextVolumeStatusSpec) GetContentsHash() string {
+	if x != nil {
+		return x.ContentsHash
+	}
+	return ""
+}
+
+func (x *TextVolumeStatusSpec) GetFiles() int64 {
+	if x != nil {
+		return x.Files
+	}
+	return 0
+}
+
 var File_resource_definitions_files_files_proto protoreflect.FileDescriptor
 
 const file_resource_definitions_files_files_proto_rawDesc = "" +
@@ -138,7 +211,13 @@ const file_resource_definitions_files_files_proto_rawDesc = "" +
 	"\x04mode\x18\x02 \x01(\rR\x04mode\x12#\n" +
 	"\rselinux_label\x18\x03 \x01(\tR\fselinuxLabel\"6\n" +
 	"\x11EtcFileStatusSpec\x12!\n" +
-	"\fspec_version\x18\x01 \x01(\tR\vspecVersionBt\n" +
+	"\fspec_version\x18\x01 \x01(\tR\vspecVersion\"\x8a\x01\n" +
+	"\x14TextVolumeStatusSpec\x12\x1f\n" +
+	"\vvolume_name\x18\x01 \x01(\tR\n" +
+	"volumeName\x12\x16\n" +
+	"\x06target\x18\x02 \x01(\tR\x06target\x12#\n" +
+	"\rcontents_hash\x18\x03 \x01(\tR\fcontentsHash\x12\x14\n" +
+	"\x05files\x18\x04 \x01(\x03R\x05filesBt\n" +
 	"(dev.talos.api.resource.definitions.filesZHgithub.com/siderolabs/talos/pkg/machinery/api/resource/definitions/filesb\x06proto3"
 
 var (
@@ -153,10 +232,11 @@ func file_resource_definitions_files_files_proto_rawDescGZIP() []byte {
 	return file_resource_definitions_files_files_proto_rawDescData
 }
 
-var file_resource_definitions_files_files_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_resource_definitions_files_files_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_resource_definitions_files_files_proto_goTypes = []any{
-	(*EtcFileSpecSpec)(nil),   // 0: talos.resource.definitions.files.EtcFileSpecSpec
-	(*EtcFileStatusSpec)(nil), // 1: talos.resource.definitions.files.EtcFileStatusSpec
+	(*EtcFileSpecSpec)(nil),      // 0: talos.resource.definitions.files.EtcFileSpecSpec
+	(*EtcFileStatusSpec)(nil),    // 1: talos.resource.definitions.files.EtcFileStatusSpec
+	(*TextVolumeStatusSpec)(nil), // 2: talos.resource.definitions.files.TextVolumeStatusSpec
 }
 var file_resource_definitions_files_files_proto_depIdxs = []int32{
 	0, // [0:0] is the sub-list for method output_type
@@ -177,7 +257,7 @@ func file_resource_definitions_files_files_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_resource_definitions_files_files_proto_rawDesc), len(file_resource_definitions_files_files_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

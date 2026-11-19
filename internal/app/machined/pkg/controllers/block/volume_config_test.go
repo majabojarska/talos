@@ -621,6 +621,69 @@ func (suite *VolumeConfigSuite) TestReconcileUserRawVolumes() {
 	ctest.AssertNoResource[*block.VolumeConfig](suite, rawVolumes[0])
 }
 
+func (suite *VolumeConfigSuite) TestReconcileTextVolumes() {
+	newTextVolume := func(name string) *blockcfg.TextVolumeConfigV1Alpha1 {
+		tv := blockcfg.NewTextVolumeConfigV1Alpha1()
+		tv.MetaName = name
+		tv.FilesConfig = map[string]blockcfg.TextVolumeFileV1Alpha1{
+			"a.conf": {FileContents: "a"},
+		}
+
+		return tv
+	}
+
+	ctr, err := container.New(newTextVolume("config1"), newTextVolume("config2"))
+	suite.Require().NoError(err)
+
+	cfg := config.NewMachineConfig(ctr)
+	suite.Create(cfg)
+
+	textVolumes := []string{constants.TextVolumePrefix + "config1", constants.TextVolumePrefix + "config2"}
+
+	ctest.AssertResources(suite, textVolumes, func(vc *block.VolumeConfig, asrt *assert.Assertions) {
+		asrt.Contains(vc.Metadata().Labels().Raw(), block.TextVolumeLabel)
+		asrt.Equal(block.VolumeTypeTmpfs, vc.TypedSpec().Type)
+		asrt.Equal(constants.UserVolumeMountPoint, vc.TypedSpec().Mount.ParentID)
+		asrt.Equal(vc.Metadata().ID()[len(constants.TextVolumePrefix):], vc.TypedSpec().Mount.TargetPath)
+		asrt.NoError(block.ValidateTmpfsParameters(vc.TypedSpec().Mount.Parameters))
+	})
+
+	ctest.AssertResources(suite, textVolumes, func(vmr *block.VolumeMountRequest, asrt *assert.Assertions) {
+		asrt.Equal(vmr.Metadata().ID(), vmr.TypedSpec().VolumeID)
+		asrt.False(vmr.TypedSpec().ReadOnly)
+		asrt.True(vmr.TypedSpec().Secure)
+		asrt.True(vmr.TypedSpec().NoExec)
+	})
+
+	// simulate other controllers working - add finalizers for volume config & mount request
+	for _, volumeID := range textVolumes {
+		suite.AddFinalizer(block.NewVolumeConfig(block.NamespaceName, volumeID).Metadata(), "test")
+		suite.AddFinalizer(block.NewVolumeMountRequest(block.NamespaceName, volumeID).Metadata(), "test")
+	}
+
+	// keep only the first volume: the second one is found by its label, and torn down
+	ctr, err = container.New(newTextVolume("config1"))
+	suite.Require().NoError(err)
+
+	newCfg := config.NewMachineConfig(ctr)
+	newCfg.Metadata().SetVersion(cfg.Metadata().Version())
+	suite.Update(newCfg)
+
+	ctest.AssertResources(suite, textVolumes, func(vc *block.VolumeConfig, asrt *assert.Assertions) {
+		if vc.Metadata().ID() == textVolumes[0] {
+			asrt.Equal(resource.PhaseRunning, vc.Metadata().Phase())
+		} else {
+			asrt.Equal(resource.PhaseTearingDown, vc.Metadata().Phase())
+		}
+	})
+
+	suite.RemoveFinalizer(block.NewVolumeConfig(block.NamespaceName, textVolumes[1]).Metadata(), "test")
+	suite.RemoveFinalizer(block.NewVolumeMountRequest(block.NamespaceName, textVolumes[1]).Metadata(), "test")
+
+	ctest.AssertNoResource[*block.VolumeConfig](suite, textVolumes[1])
+	ctest.AssertNoResource[*block.VolumeMountRequest](suite, textVolumes[1])
+}
+
 func (suite *VolumeConfigSuite) TestReconcileUserSwapVolumes() {
 	userVolumeNames := []string{
 		"data-part1",

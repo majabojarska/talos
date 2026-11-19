@@ -52,6 +52,7 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
 	"github.com/siderolabs/talos/pkg/machinery/resources/containers"
 	crires "github.com/siderolabs/talos/pkg/machinery/resources/cri"
+	"github.com/siderolabs/talos/pkg/machinery/resources/files"
 	runtimeres "github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 	"github.com/siderolabs/talos/pkg/machinery/role"
 )
@@ -2110,6 +2111,84 @@ func (suite *ContainersSuite) TestContainerUserVolumeMount() {
 		constants.UserVolumePrefix+volumeName)
 }
 
+// TestContainerTextVolumeMount verifies that a text volume is mounted read-only into a container,
+// and that a change to its files reaches the running container without restarting it.
+func (suite *ContainersSuite) TestContainerTextVolumeMount() {
+	ctx, name, _ := suite.setupContainer("textvolume")
+
+	volumeName := fmt.Sprintf("itt-%04x", rand.Int31())
+	suite.ownVolume(name, volumeName)
+
+	const destination = "/etc/app"
+
+	textVolume := func(app string) *blockcfg.TextVolumeConfigV1Alpha1 {
+		doc := blockcfg.NewTextVolumeConfigV1Alpha1()
+		doc.MetaName = volumeName
+		doc.FilesConfig = map[string]blockcfg.TextVolumeFileV1Alpha1{
+			"app.conf":        {FileContents: app},
+			"sub/nested.conf": {FileMode: 0o600, FileContents: "nested"},
+		}
+
+		return doc
+	}
+
+	suite.T().Logf("declaring text volume %q", volumeName)
+
+	suite.PatchMachineConfig(ctx, textVolume("v1"))
+
+	// The files are read in a loop, as an update has to show up in the running container. The write
+	// check comes first and only once: the volume must be read-only inside the container.
+	doc := suite.shellContainer(name,
+		"touch "+destination+"/probe 2>/dev/null && echo WRITABLE || echo READONLY; "+
+			"trap 'exit 0' TERM; "+
+			"while true; do echo \"app=$(cat "+destination+"/app.conf) nested=$(cat "+destination+"/sub/nested.conf)\"; sleep 1 & wait; done")
+	doc.MountsConfig = []containercfg.ContainerMount{
+		{
+			VolumeMount: &containercfg.VolumeMount{
+				VolumeName:       volumeName,
+				MountDestination: destination,
+				MountOpts:        []string{"ro"},
+			},
+		},
+	}
+
+	suite.applyContainers(ctx, doc)
+
+	rtestutils.AssertResource(ctx, suite.T(), suite.Client.State(), constants.TextVolumePrefix+volumeName,
+		func(status *files.TextVolumeStatus, asrt *assert.Assertions) {
+			asrt.Equal(volumeName, status.TypedSpec().VolumeName)
+			asrt.Equal(filepath.Join(constants.UserVolumeMountPoint, volumeName), status.TypedSpec().Target)
+			asrt.Equal(2, status.TypedSpec().Files)
+		})
+
+	logs := suite.assertContainerLogged(ctx, name, "app=v1 nested=nested")
+	suite.Assert().Contains(logs, "READONLY", "text volume is writable in the container")
+
+	instanceID, _ := suite.assertContainerRunning(ctx, name, "with the text volume mounted")
+
+	suite.T().Logf("updating text volume %q", volumeName)
+
+	suite.PatchMachineConfig(ctx, textVolume("v2"))
+
+	suite.assertContainerLogged(ctx, name, "app=v2 nested=nested")
+
+	updatedInstanceID, _ := suite.assertContainerRunning(ctx, name, "after the text volume update")
+	suite.Assert().Equal(instanceID, updatedInstanceID, "the container was restarted by the text volume update")
+
+	suite.T().Logf("removing container config %q", name)
+
+	suite.RemoveMachineConfigDocumentsByName(ctx, containercfg.ContainerConfigKind, name)
+
+	rtestutils.AssertNoResource[*containers.ContainerMountStatus](ctx, suite.T(), suite.Client.State(), name)
+
+	suite.T().Logf("removing text volume %q", volumeName)
+
+	suite.RemoveMachineConfigDocumentsByName(ctx, blockcfg.TextVolumeConfigKind, volumeName)
+
+	rtestutils.AssertNoResource[*files.TextVolumeStatus](ctx, suite.T(), suite.Client.State(), constants.TextVolumePrefix+volumeName)
+	rtestutils.AssertNoResource[*block.MountStatus](ctx, suite.T(), suite.Client.State(), constants.TextVolumePrefix+volumeName)
+}
+
 // TestUserVolumeMountWritableByDefault verifies that a user volume mounted without options is
 // writable, both as requested of the block subsystem and as the container finds it.
 func (suite *ContainersSuite) TestUserVolumeMountWritableByDefault() {
@@ -2723,7 +2802,7 @@ func (suite *ContainersSuite) setupContainerOn(purpose, node string) (context.Co
 					switch doc.Kind() {
 					case containercfg.ContainerConfigKind:
 						return named.Name() != name
-					case blockcfg.UserVolumeConfigKind, blockcfg.ExistingVolumeConfigKind, blockcfg.ExternalVolumeConfigKind:
+					case blockcfg.UserVolumeConfigKind, blockcfg.ExistingVolumeConfigKind, blockcfg.ExternalVolumeConfigKind, blockcfg.TextVolumeConfigKind:
 						// Matched by name across the volume kinds, as a test may swap one kind for another.
 						return !slices.Contains(volumes, named.Name())
 					case cricfg.SeccompProfileConfigKind:
@@ -2741,7 +2820,9 @@ func (suite *ContainersSuite) setupContainerOn(purpose, node string) (context.Co
 
 		for _, volume := range volumes {
 			// Every volume kind, as a test may swap one kind for another under the same name.
-			for _, prefix := range []string{constants.UserVolumePrefix, constants.ExistingVolumePrefix, constants.ExternalVolumePrefix} {
+			for _, prefix := range []string{
+				constants.UserVolumePrefix, constants.ExistingVolumePrefix, constants.ExternalVolumePrefix, constants.TextVolumePrefix,
+			} {
 				rtestutils.AssertNoResource[*block.MountStatus](waitCtx, suite.T(), suite.Client.State(), prefix+volume)
 			}
 		}

@@ -34,10 +34,10 @@ var validMountOptions = []string{
 // typed so that Talos can reason about what a container is allowed to reach.
 type ContainerMount struct {
 	//   description: |
-	//     Mount a user, existing or external volume by name.
+	//     Mount a user, existing, external or text volume by name.
 	//
-	//     The name is that of a `UserVolumeConfig`, `ExistingVolumeConfig` or
-	//     `ExternalVolumeConfig` document. Volume names are unique across those kinds, so the
+	//     The name is that of a `UserVolumeConfig`, `ExistingVolumeConfig`, `ExternalVolumeConfig`
+	//     or `TextVolumeConfig` document. Volume names are unique across those kinds, so the
 	//     name resolves to one volume. The volume must be declared in the same configuration.
 	//
 	//     The volume is mounted from `/var/mnt/<name>` on the host. Declaring this mount also
@@ -63,7 +63,7 @@ type VolumeMount struct {
 	//   description: |
 	//     Name of the volume to mount.
 	//
-	//     The name of a `UserVolumeConfig`, `ExistingVolumeConfig` or `ExternalVolumeConfig` document.
+	//     The name of a `UserVolumeConfig`, `ExistingVolumeConfig`, `ExternalVolumeConfig` or `TextVolumeConfig` document.
 	VolumeName string `yaml:"name"`
 	//   description: |
 	//     Absolute path inside the container's mount namespace.
@@ -72,7 +72,8 @@ type VolumeMount struct {
 	//     Mount options. Volume mounts are writable by default (`rw`).
 	//
 	//     A volume whose `ExistingVolumeConfig` or `ExternalVolumeConfig` declares it
-	//     read-only must be mounted with `ro`.
+	//     read-only must be mounted with `ro`, as must a text volume (`TextVolumeConfig`),
+	//     which is always read-only for containers.
 	//   values:
 	//     - ro
 	//     - rw

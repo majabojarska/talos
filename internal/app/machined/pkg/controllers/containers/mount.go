@@ -20,6 +20,7 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"github.com/siderolabs/talos/pkg/machinery/resources/containers"
+	"github.com/siderolabs/talos/pkg/machinery/resources/files"
 )
 
 // containerLabel carries the owning container on the mount requests this controller creates.
@@ -79,6 +80,12 @@ func (ctrl *MountController) Inputs() []controller.Input {
 			Namespace: block.NamespaceName,
 			Type:      block.VolumeStatusType,
 			Kind:      controller.InputStrong,
+		},
+		// A text volume is ready for containers only once its files are rendered.
+		{
+			Namespace: files.NamespaceName,
+			Type:      files.TextVolumeStatusType,
+			Kind:      controller.InputWeak,
 		},
 		{
 			// InputDestroyReady is what lets this controller tear down its own mount requests: it
@@ -320,7 +327,7 @@ func (ctrl *MountController) reconcileContainer(
 
 		volumeName := containerMountSpec.VolumeName
 
-		// Names are unique across user, existing and external volumes, so a name resolves to at most
+		// Names are unique across user, existing, external and text volumes, so a name resolves to at most
 		// one volume ID. Validation rejects a name nothing declares; one reaches here only while the
 		// machine config is missing or validation was bypassed, and the container is held back until
 		// the volume is declared.
@@ -338,7 +345,7 @@ func (ctrl *MountController) reconcileContainer(
 
 			reasons = append(
 				reasons,
-				fmt.Sprintf("no UserVolumeConfig, ExistingVolumeConfig or ExternalVolumeConfig named %q is configured", volumeName),
+				fmt.Sprintf("no UserVolumeConfig, ExistingVolumeConfig, ExternalVolumeConfig or TextVolumeConfig named %q is configured", volumeName),
 			)
 
 			continue
@@ -435,6 +442,23 @@ func (ctrl *MountController) reconcileContainer(
 			continue
 		}
 
+		if backing.Text {
+			// The files of a text volume are rendered once the volume is mounted: starting before that
+			// would show the container an empty volume. Updates after the start are swapped in place.
+			rendered, renderedErr := textVolumeRendered(ctx, runtime, volumeID, volumeMountStatus.TypedSpec().Target)
+			if renderedErr != nil {
+				return nil, false, "", renderedErr
+			}
+
+			if !rendered {
+				ready = false
+
+				reasons = append(reasons, fmt.Sprintf("waiting for the files of text volume %q to be rendered", volumeName))
+
+				continue
+			}
+		}
+
 		if !volumeMountStatus.Metadata().Finalizers().Has(ctrl.Name()) {
 			if err = runtime.AddFinalizer(ctx, volumeMountStatus.Metadata(), ctrl.Name()); err != nil {
 				return nil, false, "", fmt.Errorf("failed to add finalizer on %q: %w", requestID, err)
@@ -460,6 +484,20 @@ func (ctrl *MountController) reconcileContainer(
 	}
 
 	return resolvedMounts, ready, strings.Join(reasons, "; "), nil
+}
+
+// textVolumeRendered reports whether the files of a text volume are rendered at the target.
+func textVolumeRendered(ctx context.Context, reader controller.Reader, volumeID, target string) (bool, error) {
+	textVolumeStatus, err := safe.ReaderGetByID[*files.TextVolumeStatus](ctx, reader, volumeID)
+	if err != nil {
+		if state.IsNotFoundError(err) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("failed to get text volume status %q: %w", volumeID, err)
+	}
+
+	return textVolumeStatus.TypedSpec().Target == target, nil
 }
 
 // releaseUnwanted releases the mounts no container needs any more.

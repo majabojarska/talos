@@ -33,6 +33,17 @@ func newUserVolumeDoc(name string) *blockcfg.UserVolumeConfigV1Alpha1 {
 	return doc
 }
 
+// newTextVolumeDoc builds a TextVolumeConfig document with a single file.
+func newTextVolumeDoc(name string) *blockcfg.TextVolumeConfigV1Alpha1 {
+	doc := blockcfg.NewTextVolumeConfigV1Alpha1()
+	doc.MetaName = name
+	doc.FilesConfig = map[string]blockcfg.TextVolumeFileV1Alpha1{
+		"app.conf": {FileContents: "key=value\n"},
+	}
+
+	return doc
+}
+
 // newExternalVolumeDoc builds an ExternalVolumeConfig document, read-only when asked for.
 func newExternalVolumeDoc(name string, readOnly bool) *blockcfg.ExternalVolumeConfigV1Alpha1 {
 	doc := blockcfg.NewExternalVolumeConfigV1Alpha1()
@@ -147,6 +158,16 @@ func TestContentLibraryBackingVolumes(t *testing.T) {
 			},
 			expectedErrs: []string{
 				`content library "images" cannot be backed by volume "nfs-images": the volume is configured read-only, and uploads write into the library`,
+			},
+		},
+		{
+			name: "text volume",
+			docs: []config.Document{
+				newTextVolumeDoc("text-images"),
+				newContentLibraryDoc("images", "text-images"),
+			},
+			expectedErrs: []string{
+				`content library "images" cannot be backed by volume "text-images": the volume is configured read-only, and uploads write into the library`,
 			},
 		},
 		{

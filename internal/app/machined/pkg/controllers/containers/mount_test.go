@@ -22,6 +22,7 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
 	"github.com/siderolabs/talos/pkg/machinery/resources/config"
 	"github.com/siderolabs/talos/pkg/machinery/resources/containers"
+	"github.com/siderolabs/talos/pkg/machinery/resources/files"
 )
 
 const (
@@ -150,6 +151,59 @@ func (suite *MountSuite) finishInstance() {
 func (suite *MountSuite) assertMountsReady(ready bool) {
 	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
 		asrt.Equal(ready, status.TypedSpec().Ready, "error: %q", status.TypedSpec().Error)
+	})
+}
+
+// TestTextVolumeWaitsForRenderedFiles covers a text volume: it is requested read-only like any
+// other volume, but the mount is only ready once its files are rendered at the mounted target.
+func (suite *MountSuite) TestTextVolumeWaitsForRenderedFiles() {
+	textVolume := blockcfg.NewTextVolumeConfigV1Alpha1()
+	textVolume.MetaName = testVolumeName
+	textVolume.FilesConfig = map[string]blockcfg.TextVolumeFileV1Alpha1{
+		"index.html": {FileContents: "hello"},
+	}
+
+	suite.replaceVolumes(textVolume)
+
+	const textVolumeID = "t-" + testVolumeName
+
+	requestID := mountControllerName + "/" + mountContainer + "/" + textVolumeID
+
+	suite.createSpec(suite.volumeMount("ro"))
+
+	ctest.AssertResource(suite, requestID, func(request *block.VolumeMountRequest, asrt *assert.Assertions) {
+		asrt.Equal(textVolumeID, request.TypedSpec().VolumeID)
+		asrt.True(request.TypedSpec().ReadOnly)
+		asrt.True(request.TypedSpec().Secure)
+		asrt.True(request.TypedSpec().NoExec)
+	})
+
+	suite.satisfyMountFor(requestID, textVolumeID, false)
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.False(status.TypedSpec().Ready)
+		asrt.Contains(status.TypedSpec().Error, `waiting for the files of text volume "web-content" to be rendered`)
+	})
+
+	// rendered for a previous mount of the volume: still not ready
+	stale := files.NewTextVolumeStatus(files.NamespaceName, textVolumeID)
+	stale.TypedSpec().Target = "/elsewhere"
+	suite.Create(stale)
+
+	suite.assertMountsReady(false)
+
+	stale.TypedSpec().Target = testVolumeTarget
+	suite.Update(stale)
+
+	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
+		asrt.True(status.TypedSpec().Ready, "error: %q", status.TypedSpec().Error)
+
+		if !asrt.Len(status.TypedSpec().Mounts, 1) {
+			return
+		}
+
+		asrt.Equal(testVolumeTarget, status.TypedSpec().Mounts[0].Source)
+		asrt.Equal(textVolumeID, status.TypedSpec().Mounts[0].VolumeID)
 	})
 }
 
@@ -346,7 +400,7 @@ func (suite *MountSuite) TestUnresolvedVolumeIsNotRequested() {
 
 	ctest.AssertResource(suite, mountContainer, func(status *containers.ContainerMountStatus, asrt *assert.Assertions) {
 		asrt.False(status.TypedSpec().Ready)
-		asrt.Equal(`no UserVolumeConfig, ExistingVolumeConfig or ExternalVolumeConfig named "web-content" is configured`, status.TypedSpec().Error)
+		asrt.Equal(`no UserVolumeConfig, ExistingVolumeConfig, ExternalVolumeConfig or TextVolumeConfig named "web-content" is configured`, status.TypedSpec().Error)
 	})
 
 	requests, err := safe.StateListAll[*block.VolumeMountRequest](suite.Ctx(), suite.State())

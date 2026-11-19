@@ -17,3 +17,15 @@ message EtcFileStatusSpec {
   string spec_version = 1;
 }
 
+// TextVolumeStatusSpec describes the rendered files of a text volume.
+message TextVolumeStatusSpec {
+  // VolumeName is the name of the TextVolumeConfig document.
+  string volume_name = 1;
+  // Target is the path the volume is mounted at.
+  string target = 2;
+  // ContentsHash is the hash of the rendered files.
+  string contents_hash = 3;
+  // Files is the number of rendered files.
+  int64 files = 4;
+}
+
