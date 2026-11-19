@@ -9,6 +9,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"math/rand"
 	"path/filepath"
@@ -43,6 +44,7 @@ import (
 	"github.com/siderolabs/talos/pkg/machinery/constants"
 	"github.com/siderolabs/talos/pkg/machinery/resources/block"
 	crires "github.com/siderolabs/talos/pkg/machinery/resources/cri"
+	"github.com/siderolabs/talos/pkg/machinery/resources/files"
 	"github.com/siderolabs/talos/pkg/machinery/resources/runtime"
 )
 
@@ -1451,6 +1453,155 @@ func (suite *VolumesSuite) TestUserVolumesTmpfs() {
 	suite.RemoveMachineConfigDocumentsByName(ctx, blockcfg.UserVolumeConfigKind, pctVolumeID)
 
 	rtestutils.AssertNoResource[*block.VolumeStatus](ctx, suite.T(), suite.Client.State(), pctUserVolumeID)
+}
+
+// TestTextVolumes verifies text volumes on the node: the config document becomes a bounded, secure tmpfs
+// under /var/mnt, its files are laid out behind the `..data` symlink with their modes, an update swaps
+// the whole set of files, and removing the document unmounts the volume.
+func (suite *VolumesSuite) TestTextVolumes() {
+	node := suite.RandomDiscoveredNodeInternalIP()
+	ctx := client.WithNode(suite.ctx, node)
+
+	volumeName := fmt.Sprintf("%04x-text", rand.Int31())
+	volumeID := constants.TextVolumePrefix + volumeName
+	target := filepath.Join(constants.UserVolumeMountPoint, volumeName)
+
+	newDoc := func(contents string) *blockcfg.TextVolumeConfigV1Alpha1 {
+		doc := blockcfg.NewTextVolumeConfigV1Alpha1()
+		doc.MetaName = volumeName
+		doc.FilesConfig = map[string]blockcfg.TextVolumeFileV1Alpha1{
+			"a.conf":     {FileMode: 0o600, FileContents: contents},
+			"sub/b.conf": {FileContents: "b"},
+		}
+
+		return doc
+	}
+
+	suite.T().Logf("creating text volume %s on node %s", volumeID, node)
+
+	suite.PatchMachineConfig(ctx, newDoc("v1"))
+
+	suite.T().Cleanup(func() {
+		cleanupCtx := client.WithNode(context.Background(), node)
+
+		suite.RemoveMachineConfigDocumentsByName(cleanupCtx, blockcfg.TextVolumeConfigKind, volumeName)
+	})
+
+	rtestutils.AssertResource(ctx, suite.T(), suite.Client.State(), volumeID,
+		func(vs *block.VolumeStatus, asrt *assert.Assertions) {
+			asrt.Equalf(block.VolumePhaseReady, vs.TypedSpec().Phase, "error: %s", vs.TypedSpec().ErrorMessage)
+			asrt.Equal(block.VolumeTypeTmpfs, vs.TypedSpec().Type)
+		})
+
+	hash1 := suite.assertTextVolumeRendered(ctx, volumeID, volumeName, target)
+
+	mount, ok := findMount(suite.readNodeMountInfo(ctx), target)
+	suite.Require().Truef(ok, "expected a mount at %s", target)
+	suite.Assert().Equal("tmpfs", mount.fsType)
+	suite.Assert().Equal(strconv.Itoa(2*constants.TextVolumeMaxContentsSize/1024)+"k", mount.superOpts["size"])
+	suite.Assert().True(mount.has("nosuid") && mount.has("nodev") && mount.has("noexec"),
+		"expected a secure mount, got %v", mount.options)
+
+	entries := suite.listTextVolume(ctx, target)
+	dataDir := "..data-" + hash1
+
+	suite.Assert().Equal(dataDir, entries["..data"].Link)
+	suite.Assert().Equal("..data/a.conf", entries["a.conf"].Link)
+	suite.Assert().Equal("..data/sub", entries["sub"].Link)
+
+	if suite.Assert().Contains(entries, dataDir+"/a.conf") && suite.Assert().Contains(entries, dataDir+"/sub/b.conf") {
+		suite.Assert().Equal(fs.FileMode(0o600), fs.FileMode(entries[dataDir+"/a.conf"].Mode).Perm())
+		suite.Assert().Equal(fs.FileMode(0o644), fs.FileMode(entries[dataDir+"/sub/b.conf"].Mode).Perm())
+	}
+
+	suite.Assert().Equal("v1", suite.readNodeFile(ctx, filepath.Join(target, dataDir, "a.conf")))
+
+	// an update swaps the whole set of files, and the previous one is removed
+	suite.PatchMachineConfig(ctx, newDoc("v2"))
+
+	var hash2 string
+
+	suite.Require().EventuallyWithT(func(collect *assert.CollectT) {
+		status, err := safe.StateGetByID[*files.TextVolumeStatus](ctx, suite.Client.State(), volumeID)
+		if !assert.NoError(collect, err) {
+			return
+		}
+
+		hash2 = status.TypedSpec().ContentsHash
+
+		assert.NotEqual(collect, hash1, hash2)
+	}, time.Minute, time.Second)
+
+	entries = suite.listTextVolume(ctx, target)
+
+	suite.Assert().Equal("..data-"+hash2, entries["..data"].Link)
+	suite.Assert().NotContains(entries, dataDir, "the previous set of files is left behind")
+	suite.Assert().Equal("v2", suite.readNodeFile(ctx, filepath.Join(target, "..data-"+hash2, "a.conf")))
+
+	// removing the volume unmounts the tmpfs
+	suite.RemoveMachineConfigDocumentsByName(ctx, blockcfg.TextVolumeConfigKind, volumeName)
+
+	rtestutils.AssertNoResource[*files.TextVolumeStatus](ctx, suite.T(), suite.Client.State(), volumeID)
+	rtestutils.AssertNoResource[*block.VolumeStatus](ctx, suite.T(), suite.Client.State(), volumeID)
+	rtestutils.AssertNoResource[*block.MountStatus](ctx, suite.T(), suite.Client.State(), volumeID)
+
+	suite.Eventually(func() bool {
+		_, mounted := findMount(suite.readNodeMountInfo(ctx), target)
+
+		return !mounted
+	}, time.Minute, time.Second, "expected %s to be unmounted", target)
+}
+
+// assertTextVolumeRendered waits for the files of the text volume to be rendered, and returns their hash.
+func (suite *VolumesSuite) assertTextVolumeRendered(ctx context.Context, volumeID, volumeName, target string) string {
+	var hash string
+
+	rtestutils.AssertResource(ctx, suite.T(), suite.Client.State(), volumeID,
+		func(status *files.TextVolumeStatus, asrt *assert.Assertions) {
+			asrt.Equal(volumeName, status.TypedSpec().VolumeName)
+			asrt.Equal(target, status.TypedSpec().Target)
+			asrt.Equal(2, status.TypedSpec().Files)
+			asrt.NotEmpty(status.TypedSpec().ContentsHash)
+
+			hash = status.TypedSpec().ContentsHash
+		})
+
+	return hash
+}
+
+// listTextVolume lists the text volume at root, keyed by the path relative to it.
+func (suite *VolumesSuite) listTextVolume(ctx context.Context, root string) map[string]*machineapi.FileInfo {
+	stream, err := suite.Client.LS(ctx, &machineapi.ListRequest{
+		Root:           root,
+		Recurse:        true,
+		RecursionDepth: 4,
+	})
+	suite.Require().NoError(err)
+
+	entries := map[string]*machineapi.FileInfo{}
+
+	suite.Require().NoError(helpers.ReadGRPCStream(stream, func(info *machineapi.FileInfo, _ string, _ bool) error {
+		suite.Require().Empty(info.Error, "listing %s", info.Name)
+
+		entries[info.RelativeName] = info
+
+		return nil
+	}))
+
+	return entries
+}
+
+// readNodeFile reads a file from the node in ctx.
+func (suite *VolumesSuite) readNodeFile(ctx context.Context, path string) string {
+	r, err := suite.Client.Read(ctx, path)
+	suite.Require().NoError(err)
+
+	defer r.Close() //nolint:errcheck
+
+	data, err := io.ReadAll(r)
+	suite.Require().NoError(err)
+
+	return string(data)
 }
 
 // readNodeMountInfo fetches and parses /proc/self/mountinfo from the node in ctx.
