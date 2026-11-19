@@ -1552,6 +1552,51 @@ func (suite *VolumesSuite) TestTextVolumes() {
 	}, time.Minute, time.Second, "expected %s to be unmounted", target)
 }
 
+// TestSecretTextVolume verifies that a secret text volume is rendered in full: only the machine
+// configuration is redacted, never the files written to the volume.
+func (suite *VolumesSuite) TestSecretTextVolume() {
+	node := suite.RandomDiscoveredNodeInternalIP()
+	ctx := client.WithNode(suite.ctx, node)
+
+	volumeName := fmt.Sprintf("%04x-secret", rand.Int31())
+	volumeID := constants.TextVolumePrefix + volumeName
+	target := filepath.Join(constants.UserVolumeMountPoint, volumeName)
+
+	doc := blockcfg.NewTextVolumeConfigV1Alpha1()
+	doc.MetaName = volumeName
+	doc.SecretConfig = true
+	doc.FilesConfig = map[string]blockcfg.TextVolumeFileV1Alpha1{
+		"password":  {FileMode: 0o600, FileContents: "top-secret-password"},
+		"sub/token": {FileMode: 0o600, FileContents: "top-secret-token"},
+	}
+
+	suite.T().Logf("creating secret text volume %s on node %s", volumeID, node)
+
+	suite.PatchMachineConfig(ctx, doc)
+
+	suite.T().Cleanup(func() {
+		cleanupCtx := client.WithNode(context.Background(), node)
+
+		suite.RemoveMachineConfigDocumentsByName(cleanupCtx, blockcfg.TextVolumeConfigKind, volumeName)
+	})
+
+	hash := suite.assertTextVolumeRendered(ctx, volumeID, volumeName, target)
+
+	entries := suite.listTextVolume(ctx, target)
+	dataDir := "..data-" + hash
+
+	// the hash is keyed, but the data directory is still named after the one reported in the status
+	suite.Assert().Equal(dataDir, entries["..data"].Link)
+
+	suite.Assert().Equal("top-secret-password", suite.readNodeFile(ctx, filepath.Join(target, dataDir, "password")))
+	suite.Assert().Equal("top-secret-token", suite.readNodeFile(ctx, filepath.Join(target, dataDir, "sub", "token")))
+
+	suite.RemoveMachineConfigDocumentsByName(ctx, blockcfg.TextVolumeConfigKind, volumeName)
+
+	rtestutils.AssertNoResource[*files.TextVolumeStatus](ctx, suite.T(), suite.Client.State(), volumeID)
+	rtestutils.AssertNoResource[*block.VolumeStatus](ctx, suite.T(), suite.Client.State(), volumeID)
+}
+
 // assertTextVolumeRendered waits for the files of the text volume to be rendered, and returns their hash.
 func (suite *VolumesSuite) assertTextVolumeRendered(ctx context.Context, volumeID, volumeName, target string) string {
 	var hash string

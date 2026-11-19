@@ -43,6 +43,7 @@ files:
 | Field | Type | Description | Value(s) |
 |-------|------|-------------|----------|
 |`name` |string |Name of the volume.<br><br>Name might be between 1 and 34 characters long and can only contain:<br>lowercase and uppercase ASCII letters, digits, and hyphens.  | |
+|`secret` |bool |Marks the file contents as secret.<br><br>Contents of a secret volume are replaced when the secrets of the machine configuration are redacted,<br>e.g. when the configuration is shown to a user without access to secrets.<br>The files are still rendered in full into the volume.<br><br>Defaults to `false`.  | |
 |`files` |<a href="#TextVolumeConfig.files.-">map[string]TextVolumeFileV1Alpha1</a> |Files of the volume, keyed by the path relative to the volume root.<br><br>Paths may contain subdirectories, which are created automatically.<br>Path components must not start with `..`.<br>The total size of the file contents must not exceed 1 MiB.  | |
 
 

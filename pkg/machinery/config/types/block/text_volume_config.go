@@ -44,6 +44,7 @@ var (
 	_ config.TextVolumeConfig    = &TextVolumeConfigV1Alpha1{}
 	_ config.ConflictingDocument = &TextVolumeConfigV1Alpha1{}
 	_ config.NamedDocument       = &TextVolumeConfigV1Alpha1{}
+	_ config.SecretDocument      = &TextVolumeConfigV1Alpha1{}
 	_ config.Validator           = &TextVolumeConfigV1Alpha1{}
 )
 
@@ -94,6 +95,15 @@ type TextVolumeConfigV1Alpha1 struct {
 	//     lowercase and uppercase ASCII letters, digits, and hyphens.
 	//   schemaRequired: true
 	MetaName string `yaml:"name"`
+	//   description: |
+	//     Marks the file contents as secret.
+	//
+	//     Contents of a secret volume are replaced when the secrets of the machine configuration are redacted,
+	//     e.g. when the configuration is shown to a user without access to secrets.
+	//     The files are still rendered in full into the volume.
+	//
+	//     Defaults to `false`.
+	SecretConfig bool `yaml:"secret,omitempty"`
 	//   description: |
 	//     Files of the volume, keyed by the path relative to the volume root.
 	//
@@ -157,6 +167,22 @@ func (s *TextVolumeConfigV1Alpha1) Clone() config.Document {
 // ConflictsWithKinds implements config.ConflictingDocument interface.
 func (s *TextVolumeConfigV1Alpha1) ConflictsWithKinds() []string {
 	return conflictingVolumeKinds(TextVolumeConfigKind)
+}
+
+// Redact implements config.SecretDocument interface.
+//
+// Only the contents of secret volumes are redacted.
+func (s *TextVolumeConfigV1Alpha1) Redact(replacement string) {
+	if !s.SecretConfig {
+		return
+	}
+
+	for path, file := range s.FilesConfig {
+		if file.FileContents != "" {
+			file.FileContents = replacement
+			s.FilesConfig[path] = file
+		}
+	}
 }
 
 // TextVolumeConfigSignal is a signal for text volume config.

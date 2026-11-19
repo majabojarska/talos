@@ -954,6 +954,13 @@ func (TextVolumeConfigV1Alpha1) Doc() *encoder.Doc {
 				Comments:    [3]string{"" /* encoder.HeadComment */, "Name of the volume." /* encoder.LineComment */, "" /* encoder.FootComment */},
 			},
 			{
+				Name:        "secret",
+				Type:        "bool",
+				Note:        "",
+				Description: "Marks the file contents as secret.\n\nContents of a secret volume are replaced when the secrets of the machine configuration are redacted,\ne.g. when the configuration is shown to a user without access to secrets.\nThe files are still rendered in full into the volume.\n\nDefaults to `false`.",
+				Comments:    [3]string{"" /* encoder.HeadComment */, "Marks the file contents as secret." /* encoder.LineComment */, "" /* encoder.FootComment */},
+			},
+			{
 				Name:        "files",
 				Type:        "map[string]TextVolumeFileV1Alpha1",
 				Note:        "",

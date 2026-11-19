@@ -47,6 +47,8 @@ func assertFile(t *testing.T, dir, path, contents string, mode fs.FileMode) {
 	assert.Equal(t, mode, st.Mode().Perm(), path)
 }
 
+var testHashKey = []byte("test-key")
+
 func writeTextVolume(t *testing.T, dir string, files []configconfig.TextVolumeFile) string {
 	t.Helper()
 
@@ -55,10 +57,10 @@ func writeTextVolume(t *testing.T, dir string, files []configconfig.TextVolumeFi
 
 	t.Cleanup(func() { root.Close() }) //nolint:errcheck
 
-	hash, err := filesctrl.WriteTextVolume(root, files)
+	hash, err := filesctrl.WriteTextVolume(root, testHashKey, files)
 	require.NoError(t, err)
 
-	assert.Equal(t, filesctrl.TextVolumeContentsHash(files), hash)
+	assert.Equal(t, filesctrl.TextVolumeContentsHash(testHashKey, files), hash)
 
 	return hash
 }
@@ -129,7 +131,7 @@ func TestWriteTextVolumeRepairs(t *testing.T) {
 
 	// leftovers: a stray file, a partial data dir, a stale tmp link, and a broken top-level entry
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "stray"), []byte("x"), 0o644))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "..data-"+filesctrl.TextVolumeContentsHash(files), "garbage"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "..data-"+filesctrl.TextVolumeContentsHash(testHashKey, files), "garbage"), 0o755))
 	require.NoError(t, os.Symlink("nowhere", filepath.Join(dir, "..data_tmp")))
 	require.NoError(t, os.Mkdir(filepath.Join(dir, "a.conf"), 0o755))
 
@@ -144,4 +146,18 @@ func TestWriteTextVolumeRepairs(t *testing.T) {
 
 	writeTextVolume(t, dir, files)
 	assertFile(t, dir, "a.conf", "a", 0o644)
+}
+
+func TestTextVolumeContentsHashKeyed(t *testing.T) {
+	t.Parallel()
+
+	files := []configconfig.TextVolumeFile{{Path: "password", Mode: 0o600, Contents: "hunter2"}}
+
+	hash := filesctrl.TextVolumeContentsHash(testHashKey, files)
+
+	assert.Equal(t, hash, filesctrl.TextVolumeContentsHash(testHashKey, files))
+	assert.NotEqual(t, hash, filesctrl.TextVolumeContentsHash([]byte("other-key"), files), "the hash must depend on the key")
+	assert.NotEqual(t, hash, filesctrl.TextVolumeContentsHash(testHashKey, []configconfig.TextVolumeFile{
+		{Path: "password", Mode: 0o600, Contents: "hunter3"},
+	}))
 }

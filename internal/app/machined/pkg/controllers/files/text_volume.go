@@ -6,6 +6,7 @@ package files
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
 	"os"
 
@@ -34,6 +35,11 @@ import (
 type TextVolumeController struct {
 	// SkipFilesystemCheck disables the check that the volume target is a tmpfs, for tests.
 	SkipFilesystemCheck bool
+
+	// HashKey keys the hash of the rendered files, so that the hash doesn't reveal secret contents.
+	//
+	// If not set, a random key is generated on the first run of the controller.
+	HashKey []byte
 }
 
 // Name implements controller.Controller interface.
@@ -70,6 +76,14 @@ func (ctrl *TextVolumeController) Outputs() []controller.Output {
 
 // Run implements controller.Controller interface.
 func (ctrl *TextVolumeController) Run(ctx context.Context, r controller.Runtime, logger *zap.Logger) error {
+	if ctrl.HashKey == nil {
+		ctrl.HashKey = make([]byte, 32)
+
+		if _, err := rand.Read(ctrl.HashKey); err != nil {
+			return fmt.Errorf("failed to generate hash key: %w", err)
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -161,7 +175,7 @@ func (ctrl *TextVolumeController) render(target string, textFiles []configconfig
 		}
 	}
 
-	return WriteTextVolume(root, textFiles)
+	return WriteTextVolume(root, ctrl.HashKey, textFiles)
 }
 
 func checkTmpfs(root *os.Root) error {

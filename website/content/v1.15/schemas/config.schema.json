@@ -920,6 +920,13 @@
           "markdownDescription": "Name of the volume.\n\nName might be between 1 and 34 characters long and can only contain:\nlowercase and uppercase ASCII letters, digits, and hyphens.",
           "x-intellij-html-description": "\u003cp\u003eName of the volume.\u003c/p\u003e\n\n\u003cp\u003eName might be between 1 and 34 characters long and can only contain:\nlowercase and uppercase ASCII letters, digits, and hyphens.\u003c/p\u003e\n"
         },
+        "secret": {
+          "type": "boolean",
+          "title": "secret",
+          "description": "Marks the file contents as secret.\n\nContents of a secret volume are replaced when the secrets of the machine configuration are redacted,\ne.g. when the configuration is shown to a user without access to secrets.\nThe files are still rendered in full into the volume.\n\nDefaults to false.\n",
+          "markdownDescription": "Marks the file contents as secret.\n\nContents of a secret volume are replaced when the secrets of the machine configuration are redacted,\ne.g. when the configuration is shown to a user without access to secrets.\nThe files are still rendered in full into the volume.\n\nDefaults to `false`.",
+          "x-intellij-html-description": "\u003cp\u003eMarks the file contents as secret.\u003c/p\u003e\n\n\u003cp\u003eContents of a secret volume are replaced when the secrets of the machine configuration are redacted,\ne.g. when the configuration is shown to a user without access to secrets.\nThe files are still rendered in full into the volume.\u003c/p\u003e\n\n\u003cp\u003eDefaults to \u003ccode\u003efalse\u003c/code\u003e.\u003c/p\u003e\n"
+        },
         "files": {
           "patternProperties": {
             ".*": {

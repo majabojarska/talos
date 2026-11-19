@@ -205,3 +205,38 @@ func TestContentLibraryBackingVolumes(t *testing.T) {
 		})
 	}
 }
+
+func TestRedactSecretTextVolume(t *testing.T) {
+	t.Parallel()
+
+	secretDoc := newTextVolumeDoc("secret")
+	secretDoc.SecretConfig = true
+
+	plainDoc := newTextVolumeDoc("plain")
+
+	cfg, err := container.New(secretDoc, plainDoc)
+	require.NoError(t, err)
+
+	contents := func(provider config.Config) map[string]string {
+		result := map[string]string{}
+
+		for _, textVolume := range provider.TextVolumeConfigs() {
+			for _, file := range textVolume.Files() {
+				result[textVolume.Name()+"/"+file.Path] = file.Contents
+			}
+		}
+
+		return result
+	}
+
+	assert.Equal(t, map[string]string{
+		"secret/app.conf": "REDACTED",
+		"plain/app.conf":  "key=value\n",
+	}, contents(cfg.RedactSecrets("REDACTED")))
+
+	// the original config is left intact
+	assert.Equal(t, map[string]string{
+		"secret/app.conf": "key=value\n",
+		"plain/app.conf":  "key=value\n",
+	}, contents(cfg))
+}

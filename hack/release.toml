@@ -47,6 +47,8 @@ Changes to the files are applied without restarting the containers: the whole se
 Applications should watch for the changes and re-read the files.
 
 The name of a text volume must not be taken by a user, existing or external volume.
+
+Set `secret: true` to mark the file contents as secret: they are redacted from the machine configuration when it is redacted (e.g. in Omni), while the files are still rendered in full.
 """
 
     [notes.kubeprism_readiness_check]

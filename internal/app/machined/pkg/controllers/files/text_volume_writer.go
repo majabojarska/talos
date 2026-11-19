@@ -5,6 +5,7 @@
 package files
 
 import (
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -33,8 +34,11 @@ const (
 )
 
 // TextVolumeContentsHash returns the hash identifying a set of text volume files.
-func TextVolumeContentsHash(files []configconfig.TextVolumeFile) string {
-	hasher := sha256.New()
+//
+// The hash is keyed, so that it doesn't allow to guess the (possibly secret) contents of the files:
+// it is visible both in the TextVolumeStatus and in the name of the data directory.
+func TextVolumeContentsHash(key []byte, files []configconfig.TextVolumeFile) string {
+	hasher := hmac.New(sha256.New, key)
 
 	for _, file := range files {
 		// length-prefixed, so that no two different sets of files hash the same
@@ -58,11 +62,12 @@ func TextVolumeContentsHash(files []configconfig.TextVolumeFile) string {
 //   - each top-level entry (file or directory) is a symlink into `..data`.
 //
 // Rendering the set of files which is already current only repairs the top-level symlinks.
+// The hashKey keys the hash of the files, see TextVolumeContentsHash.
 // Returns the hash of the rendered files.
 //
 //nolint:gocyclo
-func WriteTextVolume(root *os.Root, files []configconfig.TextVolumeFile) (string, error) {
-	hash := TextVolumeContentsHash(files)
+func WriteTextVolume(root *os.Root, hashKey []byte, files []configconfig.TextVolumeFile) (string, error) {
+	hash := TextVolumeContentsHash(hashKey, files)
 	dataDir := textVolumeDataDirPrefix + hash
 
 	current, err := root.Readlink(textVolumeDataLink)

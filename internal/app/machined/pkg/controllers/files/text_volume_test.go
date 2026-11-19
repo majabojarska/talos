@@ -84,7 +84,7 @@ func (suite *TextVolumeSuite) TestRender() {
 		asrt.Equal("app", r.TypedSpec().VolumeName)
 		asrt.Equal(target, r.TypedSpec().Target)
 		asrt.Equal(2, r.TypedSpec().Files)
-		asrt.Equal(filesctrl.TextVolumeContentsHash([]configconfig.TextVolumeFile{
+		asrt.Equal(filesctrl.TextVolumeContentsHash(testHashKey, []configconfig.TextVolumeFile{
 			{Path: "a.conf", Mode: 0o644, Contents: "a1"},
 			{Path: "sub/b.conf", Mode: 0o644, Contents: "b1"},
 		}), r.TypedSpec().ContentsHash)
@@ -219,7 +219,7 @@ func TestTextVolumeSuite(t *testing.T) {
 	suite.Run(t, &TextVolumeSuite{
 		Timeout: 10 * time.Second,
 		AfterSetup: func(suite *ctest.DefaultSuite) {
-			suite.Require().NoError(suite.Runtime().RegisterController(&filesctrl.TextVolumeController{SkipFilesystemCheck: true}))
+			suite.Require().NoError(suite.Runtime().RegisterController(&filesctrl.TextVolumeController{SkipFilesystemCheck: true, HashKey: testHashKey}))
 		},
 	})
 }
